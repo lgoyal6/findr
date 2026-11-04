@@ -15,5 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test
         run: swift test
-      - name: Build release
-        run: swift build -c release
+      - name: Build app and DMG
+        run: ./scripts/bundle.sh
+      - name: Verify bundled updater
+        run: ./scripts/check-bundle.sh
