@@ -5,7 +5,9 @@ import SwiftUI
 /// A panel that can take keyboard focus without activating the app, so the app
 /// you were in stays frontmost, like Spotlight.
 final class SearchPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    /// Off for screenshot renders, so they never take keystrokes meant for another app.
+    var allowsKey = true
+    override var canBecomeKey: Bool { allowsKey }
     override var canBecomeMain: Bool { false }
 }
 
@@ -94,6 +96,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// Draws the panel off-screen without taking keyboard focus, for screenshots
     /// (`findr --render "pace pdf" --down 2 --preview`). Calls back with the window number.
     func renderOffscreen(query: String, down: Int, preview: Bool, done: @escaping (Int) -> Void) {
+        panel.allowsKey = false
         model.reset()
         model.text = query
         let width = Self.width + (preview ? Self.previewWidth : 0)
