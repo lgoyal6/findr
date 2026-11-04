@@ -19,6 +19,7 @@ final class SettingsModel: ObservableObject {
     /// Re-registers the global shortcut; returns false if macOS refused it.
     var registerHotKey: () -> Bool = { true }
     private var monitor: Any?
+    private weak var recordingWindow: NSWindow?
 
     var launchAtLogin: Bool {
         get { SMAppService.mainApp.status == .enabled }
@@ -43,10 +44,14 @@ final class SettingsModel: ObservableObject {
 
     /// Captures the next key press with a modifier as the new shortcut. Esc cancels.
     func startRecording() {
+        guard !recording else { return }
         recording = true
+        recordingWindow = NSApp?.keyWindow
         hotKeyError = nil
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
+            guard self.recording, let window = self.recordingWindow,
+                  event.window === window else { return event }
             if event.keyCode == 53 {
                 self.stopRecording()
                 return nil
@@ -70,10 +75,11 @@ final class SettingsModel: ObservableObject {
         }
     }
 
-    private func stopRecording() {
+    func stopRecording() {
         recording = false
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+        recordingWindow = nil
     }
 
     func addSkipFolder() {
@@ -108,9 +114,8 @@ struct SettingsView: View {
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.08)))
                     Button(model.recording ? "Cancel" : "Change") {
-                        model.recording ? model.startRecording() : model.startRecording()
+                        model.recording ? model.stopRecording() : model.startRecording()
                     }
-                    .disabled(model.recording)
                 }
                 if let error = model.hotKeyError {
                     Text(error).font(.caption).foregroundStyle(.red)
@@ -156,5 +161,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 480, height: 460)
+        .onDisappear { model.stopRecording() }
     }
 }

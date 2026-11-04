@@ -3,7 +3,7 @@ import Sparkle
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var panel: PanelController!
     private var hotKey: HotKey!
     private var statusItem: NSStatusItem!
@@ -99,12 +99,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.title = "findr Settings"
             window.isReleasedWhenClosed = false
+            window.delegate = self
             window.contentView = NSHostingView(rootView: SettingsView(model: settings))
             window.center()
             settingsWindow = window
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        if notification.object as? NSWindow === settingsWindow { settings.stopRecording() }
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        if notification.object as? NSWindow === settingsWindow { settings.stopRecording() }
     }
 
     /// Menu-bar apps have no visible menu, but text editing shortcuts
