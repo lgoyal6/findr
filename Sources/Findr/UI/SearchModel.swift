@@ -14,7 +14,7 @@ final class SearchModel: ObservableObject {
     @Published private(set) var searching = false
     @Published private(set) var notice: String?
     @Published private(set) var snippets: [String: Snippet] = [:]
-    @Published var selected = 0
+    @Published var selected = 0 { didSet { loadSnippets() } }
     /// True once the person arrows into the list. Space and Cmd-C act on the file only then.
     @Published var listFocused = false
     @Published var previewOpen = false
@@ -27,11 +27,32 @@ final class SearchModel: ObservableObject {
     private var debounce: DispatchWorkItem?
     private var historyIndex: Int?
     private var settingFromHistory = false
-    private var snippetQueue = OperationQueue()
+    private let snippetQueue = OperationQueue()
+    private let searchQueue = OperationQueue()
+    private var cancellation = SearchCancellation()
+    private let openFile: (URL) -> Bool
+    private let openFileWith: (URL, URL, @escaping (Error?) -> Void) -> Void
+    private let recordPick: (String, String) -> Void
 
-    init() {
+    init(openFile: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
+         openFileWith: @escaping (URL, URL, @escaping (Error?) -> Void) -> Void = { file, app, done in
+             NSWorkspace.shared.open([file], withApplicationAt: app,
+                                     configuration: NSWorkspace.OpenConfiguration()) { _, error in done(error) }
+         },
+         recordPick: @escaping (String, String) -> Void = { Store.shared.recordPick(query: $0, path: $1) }) {
+        self.openFile = openFile
+        self.openFileWith = openFileWith
+        self.recordPick = recordPick
         snippetQueue.maxConcurrentOperationCount = 2
         snippetQueue.qualityOfService = .userInitiated
+        searchQueue.maxConcurrentOperationCount = 1
+        searchQueue.qualityOfService = .userInitiated
+    }
+
+    deinit {
+        cancellation.cancel()
+        searchQueue.cancelAllOperations()
+        snippetQueue.cancelAllOperations()
     }
 
     @Published private(set) var expandedSection: FindrCore.Section?
@@ -73,14 +94,21 @@ final class SearchModel: ObservableObject {
         listFocused = false
         expandedSection = nil
         selected = 0
-        debounce?.cancel()
-        generation += 1
+        cancelSearch()
+        name = []
+        inside = []
+        notice = nil
+        actionError = nil
+        previewOpen = false
+        query = QueryParser.parse(text)
+
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
             name = []; inside = []; notice = nil; searching = false; selected = 0
             query = QueryParser.parse("")
             return
         }
+        searching = true
         let work = DispatchWorkItem { [weak self] in self?.startSearch(trimmed) }
         debounce = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.09, execute: work)
@@ -88,14 +116,13 @@ final class SearchModel: ObservableObject {
 
     private func startSearch(_ text: String) {
         let gen = generation
+        let token = cancellation
         let picks = Store.shared.picks(for: text)
         let skips = Store.shared.skipFolders
         searching = true
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        searchQueue.addOperation { [weak self] in
             SearchEngine.run(text, picks: picks, skips: skips,
-                             isCurrent: { [weak self] in
-                                 DispatchQueue.main.sync { self?.generation == gen }
-                             },
+                             isCurrent: { token.isCurrent },
                              publish: { snapshot in
                                  DispatchQueue.main.async { self?.apply(snapshot, generation: gen) }
                              })
@@ -116,30 +143,61 @@ final class SearchModel: ObservableObject {
         loadSnippets()
     }
 
-    /// Finds where the word is inside the first rows of the Inside section.
+    /// Keep only a bounded set of current-query snippets and misses.
+    private var pending = Set<String>()
+    private var attempted = Set<String>()
+    private var snippetOrder: [String] = []
+
+    private func snippetKey(_ item: ResultItem) -> String {
+        item.id + "\u{1}" + query.terms.joined(separator: " ") + "\u{1}"
+            + String(item.candidate.modified?.timeIntervalSince1970 ?? 0)
+            + ":" + String(item.candidate.size ?? -1)
+    }
+
     private func loadSnippets() {
         let terms = query.terms
-        guard !terms.isEmpty else { return }
-        let key = terms.joined(separator: " ")
-        for item in inside.prefix(25) {
-            let cacheKey = item.id + "\u{1}" + key
-            guard snippets[cacheKey] == nil, !pending.contains(cacheKey) else { continue }
-            pending.insert(cacheKey)
-            let path = item.candidate.path
+        guard !terms.isEmpty, cancellation.isCurrent else { return }
+        var targets = Array(visibleInside.prefix(25))
+        if let item = selectedItem, item.section == .inside { targets.insert(item, at: 0) }
+        for item in targets {
+            let key = snippetKey(item)
+            guard pending.count < 26, !attempted.contains(key), !pending.contains(key) else { continue }
+            pending.insert(key)
+            let gen = generation
+            let token = cancellation
             snippetQueue.addOperation { [weak self] in
-                let hit = Snippets.find(path: path, terms: terms)
+                guard token.isCurrent else { return }
+                let hit = Snippets.find(path: item.candidate.path, terms: terms, isCurrent: { token.isCurrent })
                 DispatchQueue.main.async {
-                    self?.pending.remove(cacheKey)
-                    if let hit { self?.snippets[cacheKey] = hit }
+                    guard let self, self.generation == gen, token.isCurrent else { return }
+                    self.pending.remove(key)
+                    self.attempted.insert(key)
+                    self.snippetOrder.append(key)
+                    if let hit { self.snippets[key] = hit }
+                    while self.snippetOrder.count > 64 {
+                        let evicted = self.snippetOrder.removeFirst()
+                        self.attempted.remove(evicted)
+                        self.snippets.removeValue(forKey: evicted)
+                    }
                 }
             }
         }
     }
 
-    private var pending = Set<String>()
+    func snippet(for item: ResultItem) -> Snippet? { snippets[snippetKey(item)] }
 
-    func snippet(for item: ResultItem) -> Snippet? {
-        snippets[item.id + "\u{1}" + query.terms.joined(separator: " ")]
+    func cancelSearch() {
+        generation += 1
+        debounce?.cancel()
+        cancellation.cancel()
+        cancellation = SearchCancellation()
+        searchQueue.cancelAllOperations()
+        snippetQueue.cancelAllOperations()
+        pending.removeAll()
+        attempted.removeAll()
+        snippetOrder.removeAll()
+        snippets.removeAll()
+        searching = false
     }
 
     // MARK: Keyboard
@@ -178,6 +236,7 @@ final class SearchModel: ObservableObject {
     }
 
     func reset() {
+        cancelSearch()
         text = ""
         previewOpen = false
         listFocused = false
@@ -188,10 +247,14 @@ final class SearchModel: ObservableObject {
     // MARK: Actions
 
     func open(_ item: ResultItem? = nil) {
-        guard let item = item ?? selectedItem else { return }
+        guard let item = item ?? selectedItem, flat.contains(where: { $0.id == item.id }) else { return }
         let url = URL(fileURLWithPath: item.candidate.path)
-        Store.shared.recordPick(query: text, path: item.candidate.path)
-        NSWorkspace.shared.open(url)
+        guard openFile(url) else {
+            actionError = "Couldn’t open \(item.candidate.name). Check that the file still exists, or use Open with."
+            return
+        }
+        actionError = nil
+        recordPick(text, item.candidate.path)
         onDismiss()
     }
 
@@ -219,6 +282,9 @@ final class SearchModel: ObservableObject {
     }
 
     @Published private(set) var toast: String?
+    @Published private(set) var actionError: String?
+
+    func clearActionError() { actionError = nil }
 
     private func flash(_ message: String) {
         toast = message
@@ -238,9 +304,23 @@ final class SearchModel: ObservableObject {
 
     func open(with app: URL) {
         guard let item = selectedItem else { return }
-        Store.shared.recordPick(query: text, path: item.candidate.path)
-        NSWorkspace.shared.open([URL(fileURLWithPath: item.candidate.path)], withApplicationAt: app,
-                                configuration: NSWorkspace.OpenConfiguration())
-        onDismiss()
+        let gen = generation
+        let actionQuery = text
+        openFileWith(URL(fileURLWithPath: item.candidate.path), app) { [weak self] error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let error {
+                    if self.generation == gen {
+                        self.actionError = "Couldn’t open \(item.candidate.name): \(error.localizedDescription)"
+                    }
+                    return
+                }
+                self.recordPick(actionQuery, item.candidate.path)
+                if self.generation == gen {
+                    self.actionError = nil
+                    self.onDismiss()
+                }
+            }
+        }
     }
 }

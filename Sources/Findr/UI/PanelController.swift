@@ -92,6 +92,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func hide() {
+        model.cancelSearch()
         model.previewOpen = false
         panel.orderOut(nil)
     }
