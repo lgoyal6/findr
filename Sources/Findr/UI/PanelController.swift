@@ -146,7 +146,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         let shift = flags.contains(.shift)
         switch event.keyCode {
         case 53: // Esc
-            if model.previewOpen { model.previewOpen = false } else { hide() }
+            if model.previewOpen { model.previewOpen = false }
+            else if model.expandedSection != nil { model.showOverview() }
+            else { hide() }
             return true
         case 125: // Down
             model.moveDown()

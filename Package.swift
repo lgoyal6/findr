@@ -17,6 +17,7 @@ let package = Package(
             ]
         ),
         .testTarget(name: "FindrCoreTests", dependencies: ["FindrCore"]),
+        .testTarget(name: "FindrTests", dependencies: ["Findr", "FindrCore"]),
     ],
     swiftLanguageModes: [.v5]
 )
