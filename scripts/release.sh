@@ -31,7 +31,7 @@ PY
 ./scripts/check-bundle.sh
 ./scripts/appcast.sh
 # Upload both files before changing the stable /releases/latest feed URL.
-gh release create "v$VERSION" dist/findr.dmg dist/appcast.xml \
-  --target "$HEAD_SHA" --title "findr $VERSION" --draft --generate-notes
+gh release create "v$VERSION" dist/Leaf.dmg dist/appcast.xml \
+  --target "$HEAD_SHA" --title "Leaf $VERSION" --draft --generate-notes
 gh release edit "v$VERSION" --draft=false --latest
 gh release view "v$VERSION" --json url --jq .url

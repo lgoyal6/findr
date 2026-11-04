@@ -98,7 +98,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     /// Draws the panel off-screen without taking keyboard focus, for screenshots
-    /// (`findr --render "pace pdf" --down 2 --preview`). Calls back with the window number.
+    /// (`Leaf --render "pace pdf" --down 2 --preview`). Calls back with the window number.
     func renderOffscreen(query: String, down: Int, preview: Bool, done: @escaping (Int) -> Void) {
         panel.allowsKey = false
         model.reset()

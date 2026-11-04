@@ -1,7 +1,7 @@
 import FindrCore
 import Foundation
 
-/// `findr --query "pace pdf"` prints what the panel would show, for checking ranking from a terminal.
+/// `Leaf --query "pace pdf"` prints what the panel would show, for checking ranking from a terminal.
 enum CLI {
     static func run(_ text: String) {
         let started = Date()
