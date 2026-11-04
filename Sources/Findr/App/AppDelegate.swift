@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         settings.applyAppearance()
         setUpStatusItem()
+        requestFolderAccess()
 
         let arguments = CommandLine.arguments
         if let index = arguments.firstIndex(of: "--render"), index + 1 < arguments.count {
@@ -34,6 +35,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if !UserDefaults.standard.bool(forKey: "launchedBefore") {
             UserDefaults.standard.set(true, forKey: "launchedBefore")
             panel.show()
+        }
+    }
+
+    /// Spotlight silently leaves out files in Desktop, Documents and Downloads until the
+    /// app has access, and macOS only asks when the app reads a folder itself. Reading
+    /// each one at launch makes macOS ask once, instead of results quietly going missing.
+    private func requestFolderAccess() {
+        DispatchQueue.global(qos: .utility).async {
+            for folder in ["Downloads", "Desktop", "Documents"] {
+                _ = try? FileManager.default.contentsOfDirectory(atPath: NSHomeDirectory() + "/" + folder)
+            }
         }
     }
 
