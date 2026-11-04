@@ -33,7 +33,7 @@ No syntax to learn. No `kind:pdf`, no `name:`, no Finder filter rows.
 
 **Results**
 - Where the word is inside: a short line around it, and the page number for PDFs
-- Copies like `report.pdf` and `report (1).pdf` collapse into one row
+- Verified identical copies like `report.pdf` and `report (1).pdf` collapse into one row. Larger or unreadable files stay separate when byte comparison cannot be completed within the search budget.
 - A tag on every row says why it matched: `name`, `name · typo`, `inside p.3`, `pdf · last week`
 - File icon, highlighted name, folder and date
 

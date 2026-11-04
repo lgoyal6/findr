@@ -105,15 +105,22 @@ final class DedupeTests: XCTestCase {
         XCTAssertEqual(Dedupe.key(for: "Lecture-1.pdf"), "lecture-1.pdf")
     }
 
-    func testCollapsesSameSizeCopiesKeepingNewest() {
+    func testCollapsesVerifiedCopiesKeepingNewest() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = directory.appendingPathComponent("DS3.pdf").path
+        let copy = directory.appendingPathComponent("DS3 (1).pdf").path
+        try Data(repeating: 65, count: 100).write(to: URL(fileURLWithPath: original))
+        try Data(repeating: 65, count: 100).write(to: URL(fileURLWithPath: copy))
         let items = [
-            item("/d/DS3.pdf", size: 100, added: 1),
-            item("/d/DS3 (1).pdf", size: 100, added: 5),
+            item(original, size: 100, added: 1),
+            item(copy, size: 100, added: 5),
             item("/d/other.pdf", size: 7, added: 3),
         ]
         let out = Dedupe.collapse(items)
-        XCTAssertEqual(out.map(\.candidate.path), ["/d/DS3 (1).pdf", "/d/other.pdf"])
-        XCTAssertEqual(out[0].copies, ["/d/DS3.pdf"])
+        XCTAssertEqual(out.map(\.candidate.path), [copy, "/d/other.pdf"])
+        XCTAssertEqual(out[0].copies, [original])
     }
 
     func testDifferentSizesStaySeparate() {
