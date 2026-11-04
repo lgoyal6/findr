@@ -28,7 +28,7 @@ final class SettingsModel: ObservableObject {
                 if newValue { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
                 launchError = nil
             } catch {
-                launchError = "macOS said no: \(error.localizedDescription). Move findr to Applications and try again."
+                launchError = "macOS said no: \(error.localizedDescription). Move Leaf to Applications and try again."
             }
             objectWillChange.send()
         }
@@ -107,7 +107,7 @@ struct SettingsView: View {
         Form {
             Section("Shortcut") {
                 HStack {
-                    Text("Open findr")
+                    Text("Open Leaf")
                     Spacer()
                     Text(model.recording ? "Press keys…" : model.hotKeyLabel)
                         .font(.system(.body, design: .rounded).weight(.semibold))

@@ -65,20 +65,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func registerHotKey() -> Bool {
         let key = Store.shared.hotKey
         let ok = hotKey.register(code: key.code, modifiers: key.modifiers)
-        statusItem?.menu?.item(at: 0)?.title = "Open findr  \(key.label)"
+        statusItem?.menu?.item(at: 0)?.title = "Open Leaf  \(key.label)"
         return ok
     }
 
     private func setUpStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "doc.text.magnifyingglass", accessibilityDescription: "findr")
+        statusItem.button?.image = LeafLogo.image(size: 18)
         let menu = NSMenu()
-        menu.addItem(withTitle: "Open findr  \(Store.shared.hotKey.label)", action: #selector(togglePanel), keyEquivalent: "")
+        menu.addItem(withTitle: "Open Leaf  \(Store.shared.hotKey.label)", action: #selector(togglePanel), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         menu.addItem(updateMenuItem())
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit findr", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Quit Leaf", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         menu.items.forEach {
             if $0.target == nil, $0.action != #selector(NSApplication.terminate(_:)) { $0.target = self }
         }
@@ -102,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if settingsWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 460),
                                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            window.title = "findr Settings"
+            window.title = "Leaf Settings"
             window.isReleasedWhenClosed = false
             window.delegate = self
             window.contentView = NSHostingView(rootView: SettingsView(model: settings))

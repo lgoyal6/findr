@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 TOOLS=".build/artifacts/sparkle/Sparkle/bin"
 ACCOUNT="io.github.lgoyal6.findr"
-APP="dist/findr.app"
+APP="dist/Leaf.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
 PUBLIC_KEY="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")"
 if [[ "$("$TOOLS/generate_keys" --account "$ACCOUNT" -p)" != "$PUBLIC_KEY" ]]; then
@@ -23,5 +23,5 @@ root = ET.parse('dist/appcast.xml')
 print(root.find('./channel/item/enclosure').attrib['{http://www.andymatuschak.org/xml-namespaces/sparkle}edSignature'])
 PY
 )"
-"$TOOLS/sign_update" --account "$ACCOUNT" --verify dist/findr.dmg "$SIGNATURE"
+"$TOOLS/sign_update" --account "$ACCOUNT" --verify dist/Leaf.dmg "$SIGNATURE"
 echo "Verified dist/appcast.xml and its signed DMG"

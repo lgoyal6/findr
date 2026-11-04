@@ -4,7 +4,7 @@ import Foundation
 struct SearchSnapshot {
     var query: ParsedQuery
     var output: Assembler.Output
-    /// Shown above the results when findr changed what it searched for.
+    /// Shown above the results when Leaf changed what it searched for.
     var notice: String?
     var searching: Bool
 }
