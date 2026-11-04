@@ -11,6 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let settings = SettingsModel()
     private var updaterController: SPUStandardUpdaterController?
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        panel?.show()
+        return false
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Command-line searches and render tests are not installed application bundles.
         if Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil {
