@@ -61,6 +61,16 @@ struct SectionNavigationTests {
         model.reset()
     }
 
+    @Test func changingQueryImmediatelyInvalidatesActions() {
+        let model = model()
+        #expect(model.selectedItem != nil)
+        model.text = "different search"
+        #expect(model.selectedItem == nil)
+        #expect(model.name.isEmpty)
+        #expect(model.inside.isEmpty)
+        model.reset()
+    }
+
     @Test func singleSectionAndSmallResultsStayAccessible() {
         let model = model(names: 0, inside: 3)
         #expect(model.visibleName.isEmpty)

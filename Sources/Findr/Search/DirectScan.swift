@@ -9,29 +9,32 @@ enum DirectScan {
     ]
 
     /// Top level of Downloads, Desktop and home. Cheap enough to run on every keystroke.
-    static func fresh(home: String) -> [Candidate] {
+    static func fresh(home: String, isCurrent: () -> Bool = { true }) -> [Candidate] {
         let folders = [home + "/Downloads", home + "/Desktop", home]
         var results: [Candidate] = []
         for folder in folders {
+            guard isCurrent() else { return [] }
             let url = URL(fileURLWithPath: folder)
             guard let urls = try? FileManager.default.contentsOfDirectory(
                 at: url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { continue }
-            results += urls.map(candidate)
+            for url in urls {
+                guard isCurrent() else { return [] }
+                results.append(candidate(url))
+            }
         }
         return results
     }
 
     /// Walks the home folder matching names, skipping junk, until the deadline.
-    static func deep(home: String, terms: [String], junk: JunkFilter, deadline: TimeInterval = 4) -> [Candidate] {
+    static func deep(home: String, terms: [String], junk: JunkFilter, deadline: TimeInterval = 4,
+                     isCurrent: () -> Bool = { true }) -> [Candidate] {
         let stop = Date().addingTimeInterval(deadline)
         guard let walker = FileManager.default.enumerator(
             at: URL(fileURLWithPath: home), includingPropertiesForKeys: keys,
             options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return [] }
         var results: [Candidate] = []
-        var visited = 0
         for case let url as URL in walker {
-            visited += 1
-            if visited % 500 == 0, Date() > stop { break }
+            guard isCurrent(), Date() < stop else { break }
             if junk.isJunk(url.path) {
                 walker.skipDescendants()
                 continue

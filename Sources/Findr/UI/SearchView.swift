@@ -9,6 +9,17 @@ struct SearchView: View {
         VStack(spacing: 0) {
             searchBar
             Divider().opacity(0.6)
+            if let error = model.actionError {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle")
+                    Text(error).font(.system(size: 12)).lineLimit(2)
+                    Spacer()
+                    Button("Dismiss") { model.clearActionError() }
+                        .buttonStyle(.plain)
+                }
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 18).padding(.vertical, 8)
+            }
             content
             Divider().opacity(0.6)
             footer

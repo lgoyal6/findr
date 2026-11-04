@@ -8,13 +8,23 @@ enum Spotlight {
     static let attributes = [kMDItemPath, kMDItemFSSize, kMDItemLastUsedDate, kMDItemDateAdded,
                              kMDItemContentModificationDate, kMDItemContentType] as [CFString]
 
-    static func run(_ query: String, scopes: [String], limit: Int) -> [Candidate] {
+    static func run(_ query: String, scopes: [String], limit: Int,
+                    isCurrent: () -> Bool = { true }) -> [Candidate] {
+        guard isCurrent() else { return [] }
         guard let q = MDQueryCreate(kCFAllocatorDefault, query as CFString, attributes as CFArray, nil) else {
             return []
         }
         MDQuerySetSearchScope(q, scopes as CFArray, 0)
         MDQuerySetMaxCount(q, limit)
-        guard MDQueryExecute(q, CFOptionFlags(kMDQuerySynchronous.rawValue)) else { return [] }
+        guard MDQueryExecute(q, 0) else { return [] }
+        defer { MDQueryStop(q) }
+        let deadline = ProcessInfo.processInfo.systemUptime + 5
+        while !MDQueryIsGatheringComplete(q) {
+            guard isCurrent(), ProcessInfo.processInfo.systemUptime < deadline else { return [] }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        guard isCurrent() else { return [] }
+        MDQueryDisableUpdates(q)
         let count = MDQueryGetResultCount(q)
         func value(_ attribute: CFString, _ index: Int) -> AnyObject? {
             guard let raw = MDQueryGetAttributeValueOfResultAtIndex(q, attribute, index) else { return nil }
@@ -23,6 +33,7 @@ enum Spotlight {
         var results: [Candidate] = []
         results.reserveCapacity(count)
         for index in 0..<count {
+            guard isCurrent() else { return [] }
             // The path is not served from the value list, so read it from the item itself.
             guard let raw = MDQueryGetResultAtIndex(q, index) else { continue }
             let item = Unmanaged<MDItem>.fromOpaque(raw).takeUnretainedValue()
