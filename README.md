@@ -63,7 +63,7 @@ You can also drag a result straight into Mail, Slack or a browser upload box.
 ## Install
 
 1. Download `Leaf.dmg` from [Releases](../../releases) and drag Leaf to Applications.
-2. The app isn't notarized, so the first time, right-click Leaf and choose **Open**.
+2. The app isn't notarized. If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway**.
 3. Press ⌘⇧Space. macOS will ask once each for Downloads, Desktop and Documents; Leaf needs those to read new files and show where a word appears.
 
 Requires macOS 14 or later.
@@ -71,6 +71,25 @@ Requires macOS 14 or later.
 Versions before 1.0.2 need one manual replacement to gain the updater. After that,
 Leaf checks the signed update feed daily and offers new published releases.
 Editing source code alone does not update an installed app.
+
+## Install from the repo
+
+Requires macOS 14 or later and Swift 6 or later (Xcode 16+ or compatible Command
+Line Tools). If you do not have Apple's developer tools, run
+`xcode-select --install` first and finish the installation.
+
+```bash
+git clone https://github.com/lgoyal6/findr && cd findr
+./install.sh
+```
+
+The installer builds and verifies Leaf, then installs it in Applications without
+sudo. If the system Applications folder is not writable, it uses your own
+`~/Applications` folder. Open Leaf and press ⌘⇧Space to search.
+
+To install later source changes, quit Leaf, run `git pull --ff-only`, then run
+`./install.sh` again. Settings and search history stay in their existing location.
+This does not disable Gatekeeper or remove quarantine flags.
 
 ## Build from source
 
