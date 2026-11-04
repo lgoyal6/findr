@@ -1,4 +1,5 @@
 import AppKit
+import Sparkle
 import SwiftUI
 
 @MainActor
@@ -8,8 +9,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private let settings = SettingsModel()
+    private var updaterController: SPUStandardUpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Command-line searches and render tests are not installed application bundles.
+        if Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil {
+            updaterController = SPUStandardUpdaterController(
+                startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        }
         installMenu()
         panel = PanelController(openSettings: { [weak self] in self?.showSettings() })
         hotKey = HotKey { [weak self] in self?.panel.toggle() }
@@ -64,10 +71,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Open findr  \(Store.shared.hotKey.label)", action: #selector(togglePanel), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        menu.addItem(updateMenuItem())
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit findr", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
-        menu.items.forEach { if $0.action != #selector(NSApplication.terminate(_:)) { $0.target = self } }
+        menu.items.forEach {
+            if $0.target == nil, $0.action != #selector(NSApplication.terminate(_:)) { $0.target = self }
+        }
         statusItem.menu = menu
+    }
+
+    private func updateMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Check for Updates…",
+                              action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+                              keyEquivalent: "")
+        item.target = updaterController
+        if updaterController == nil { item.isEnabled = false }
+        return item
     }
 
     @objc private func togglePanel() {
@@ -95,6 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        appMenu.addItem(updateMenuItem())
         appMenu.addItem(withTitle: "Hide", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appItem.submenu = appMenu
         main.addItem(appItem)
