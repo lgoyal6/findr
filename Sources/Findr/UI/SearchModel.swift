@@ -34,7 +34,32 @@ final class SearchModel: ObservableObject {
         snippetQueue.qualityOfService = .userInitiated
     }
 
-    var flat: [ResultItem] { name + inside }
+    @Published private(set) var expandedSection: FindrCore.Section?
+
+    var visibleName: [ResultItem] {
+        expandedSection == .inside ? [] : expandedSection == .name ? name : Array(name.prefix(5))
+    }
+
+    var visibleInside: [ResultItem] {
+        expandedSection == .name ? [] : expandedSection == .inside ? inside : Array(inside.prefix(5))
+    }
+
+    var flat: [ResultItem] { visibleName + visibleInside }
+
+    func showAll(_ section: FindrCore.Section) {
+        changeSection(to: section)
+    }
+
+    func showOverview() {
+        changeSection(to: nil)
+    }
+
+    private func changeSection(to section: FindrCore.Section?) {
+        let previousID = selectedItem?.id
+        expandedSection = section
+        selected = flat.firstIndex { $0.id == previousID } ?? 0
+        listFocused = false
+    }
 
     var selectedItem: ResultItem? {
         let all = flat
@@ -46,6 +71,8 @@ final class SearchModel: ObservableObject {
     private func textChanged() {
         if !settingFromHistory { historyIndex = nil }
         listFocused = false
+        expandedSection = nil
+        selected = 0
         debounce?.cancel()
         generation += 1
         let trimmed = text.trimmingCharacters(in: .whitespaces)
@@ -75,7 +102,7 @@ final class SearchModel: ObservableObject {
         }
     }
 
-    private func apply(_ snapshot: SearchSnapshot, generation gen: Int) {
+    func apply(_ snapshot: SearchSnapshot, generation gen: Int) {
         guard gen == generation else { return }
         let previousID = selectedItem?.id
         name = snapshot.output.name

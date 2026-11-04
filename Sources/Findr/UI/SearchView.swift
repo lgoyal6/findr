@@ -72,33 +72,76 @@ struct SearchView: View {
     }
 
     private var results: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    if let notice = model.notice {
-                        Text(notice)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 20).padding(.vertical, 6)
+        VStack(spacing: 0) {
+            if model.expandedSection != nil {
+                HStack {
+                    Button { model.showOverview() } label: {
+                        Label("Back to all results", systemImage: "chevron.left")
                     }
-                    if !model.name.isEmpty {
-                        Section(header: header("Name", count: model.name.count)) {
-                            rows(model.name, offset: 0)
-                        }
-                    }
-                    if !model.inside.isEmpty {
-                        Section(header: header("Inside", count: model.inside.count)) {
-                            rows(model.inside, offset: model.name.count)
-                        }
-                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 20).padding(.vertical, 8)
+                    Spacer()
                 }
-                .padding(.bottom, 8)
             }
-            .onChange(of: model.selected) {
-                guard let id = model.selectedItem?.id else { return }
-                proxy.scrollTo(id)
+            if let notice = model.notice {
+                Text(notice)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 20).padding(.vertical, 6)
+            }
+            if !model.visibleName.isEmpty {
+                resultSection(.name, title: "Name matches", items: model.visibleName,
+                              total: model.name.count, offset: 0)
+            }
+            if !model.visibleName.isEmpty && !model.visibleInside.isEmpty {
+                Divider()
+            }
+            if !model.visibleInside.isEmpty {
+                resultSection(.inside, title: "Found inside", items: model.visibleInside,
+                              total: model.inside.count, offset: model.visibleName.count)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func resultSection(_ section: FindrCore.Section, title: String,
+                               items: [ResultItem], total: Int, offset: Int) -> some View {
+        VStack(spacing: 0) {
+            header(title, count: total)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        rows(items, offset: offset)
+                    }
+                    .padding(.bottom, 4)
+                }
+                .onChange(of: model.selected) {
+                    guard let item = model.selectedItem, item.section == section else { return }
+                    proxy.scrollTo(item.id)
+                }
+                .onChange(of: model.expandedSection) {
+                    if let id = items.first?.id { proxy.scrollTo(id, anchor: .top) }
+                }
+                .onChange(of: model.text) {
+                    if let id = items.first?.id { proxy.scrollTo(id, anchor: .top) }
+                }
+            }
+            if model.expandedSection == nil && total > items.count {
+                Button { model.showAll(section) } label: {
+                    HStack {
+                        Text("Show all \(total)")
+                        Image(systemName: "arrow.right")
+                        Spacer()
+                    }
+                    .font(.system(size: 12, weight: .medium))
+                    .padding(.horizontal, 20).padding(.vertical, 7)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func rows(_ items: [ResultItem], offset: Int) -> some View {
