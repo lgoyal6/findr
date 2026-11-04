@@ -64,8 +64,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.contentView = background
 
         model.onDismiss = { [weak self] in self?.hide() }
+        // @Published fires before the value changes; resizing then (with its animation loop)
+        // made SwiftUI miss the update and the preview pane never appeared. Wait a turn.
         model.$previewOpen
             .removeDuplicates()
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] open in self?.resize(previewOpen: open) }
             .store(in: &cancellables)
 
