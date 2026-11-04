@@ -15,27 +15,36 @@ public struct Assembler: Sendable {
         public var name: [ResultItem]
         public var inside: [ResultItem]
         public var isEmpty: Bool { name.isEmpty && inside.isEmpty }
+
+        public init(name: [ResultItem], inside: [ResultItem]) {
+            self.name = name
+            self.inside = inside
+        }
     }
 
     /// - Parameters:
     ///   - nameCandidates: files found by name (Spotlight, fresh scan, fallback scan, typo pool).
     ///   - contentCandidates: files Spotlight says contain the terms.
-    public func build(_ q: ParsedQuery, nameCandidates: [Candidate], contentCandidates: [Candidate]) -> Output {
+    public func build(_ q: ParsedQuery, nameCandidates: [Candidate], contentCandidates: [Candidate],
+                      isCurrent: () -> Bool = { true }) -> Output {
         var seen = Set<String>()
         var name: [ResultItem] = []
-        for c in nameCandidates where seen.insert(c.path).inserted && passes(c, q) {
+        for c in nameCandidates where !seen.contains(c.path) && passes(c, q) {
+            guard isCurrent() else { return Output(name: [], inside: []) }
             guard let tier = Matcher.tier(name: c.name, terms: q.terms) else { continue }
+            seen.insert(c.path)
             name.append(ResultItem(candidate: c, section: .name, tier: tier,
                                    pickCount: picks[c.path] ?? 0, copies: []))
         }
         var inside: [ResultItem] = []
         for c in contentCandidates where seen.insert(c.path).inserted && passes(c, q) {
+            guard isCurrent() else { return Output(name: [], inside: []) }
             inside.append(ResultItem(candidate: c, section: .inside, tier: nil,
                                      pickCount: picks[c.path] ?? 0, copies: []))
         }
         let codeWanted = q.kinds.contains(.code)
-        return Output(name: Dedupe.collapse(rank(name, codeWanted: codeWanted)),
-                      inside: Dedupe.collapse(rank(inside, codeWanted: codeWanted)))
+        return Output(name: Dedupe.collapse(rank(name, codeWanted: codeWanted), isCurrent: isCurrent),
+                      inside: Dedupe.collapse(rank(inside, codeWanted: codeWanted), isCurrent: isCurrent))
     }
 
     func passes(_ c: Candidate, _ q: ParsedQuery) -> Bool {
