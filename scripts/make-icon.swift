@@ -5,8 +5,18 @@ let out = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "AppIcon.
 try? FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
 
 func draw(size: CGFloat) -> Data {
-    let image = LeafLogo.image(size: size, appIcon: true)
-    let rep = NSBitmapImageRep(data: image.tiffRepresentation!)!
+    let pixels = Int(size)
+    let context = CGContext(data: nil, width: pixels, height: pixels,
+                            bitsPerComponent: 8, bytesPerRow: pixels * 4,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+    context.translateBy(x: 0, y: size)
+    context.scaleBy(x: 1, y: -1)
+    LeafLogo.draw(size: size, appIcon: true)
+    NSGraphicsContext.restoreGraphicsState()
+    let rep = NSBitmapImageRep(cgImage: context.makeImage()!)
     return rep.representation(using: .png, properties: [:])!
 }
 
