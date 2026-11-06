@@ -62,7 +62,8 @@ You can also drag a result straight into Mail, Slack or a browser upload box.
 
 ## Install
 
-1. Download `Leaf.dmg` from [Releases](../../releases) and drag Leaf to Applications.
+1. Download `Leaf.dmg` and `Leaf.dmg.sha256` from [Releases](../../releases). Check the download
+   with `shasum -a 256 -c Leaf.dmg.sha256` (it should print `Leaf.dmg: OK`), then drag Leaf to Applications.
 2. The app isn't notarized. If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway**.
 3. Press ⌘⇧Space. macOS will ask once each for Downloads, Desktop and Documents; Leaf needs those to read new files and show where a word appears.
 
