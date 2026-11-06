@@ -96,7 +96,7 @@ struct ResultRow: View {
 
     /// What VoiceOver reads for the row: name, where it is, why it matched and when.
     var accessibilityText: String {
-        var parts = [item.candidate.name.trimmingCharacters(in: .whitespaces), "in \(folder)"]
+        var parts = [Runnable.visibleName(item.candidate.name).trimmingCharacters(in: .whitespaces), "in \(folder)"]
         if !item.copies.isEmpty { parts.append("\(item.copies.count + 1) identical copies") }
         if let snippet { parts.append(snippet.text) }
         parts.append(tag)
@@ -105,6 +105,10 @@ struct ResultRow: View {
     }
 
     private var highlightedName: AttributedString {
+        // Never draw reordering characters: they make "x‮fdp.app" look like a PDF.
+        if Runnable.hasDirectionMarks(item.candidate.name) {
+            return AttributedString(Runnable.visibleName(item.candidate.name))
+        }
         let name = item.candidate.name.trimmingCharacters(in: .whitespaces)
         var text = AttributedString(name)
         guard item.section == .name else { return text }
@@ -124,11 +128,17 @@ struct ResultRow: View {
     private var tag: String {
         var parts = [item.tag]
         if item.section == .inside, let page = snippet?.page { parts[0] += " p.\(page)" }
+        if let runnable { parts.append(runnable) }
         if let filterLabel { parts.append(filterLabel) }
         return parts.joined(separator: " · ")
     }
 
-    private var tagColor: Color { item.section == .name ? (item.tier == .typo ? .orange : .blue) : .purple }
+    private var runnable: String? { Runnable.label(for: item.candidate) }
+
+    private var tagColor: Color {
+        if runnable != nil { return .red }
+        return item.section == .name ? (item.tier == .typo ? .orange : .blue) : .purple
+    }
 
     private var date: String? {
         let recency = item.candidate.recency

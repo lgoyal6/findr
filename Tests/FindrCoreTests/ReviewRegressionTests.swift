@@ -40,3 +40,19 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertTrue(output.isEmpty)
     }
 }
+
+final class RunnableTests: XCTestCase {
+    func testAppsScriptsAndInstallersAreLabelled() {
+        XCTAssertEqual(Runnable.label(name: "Leaf.app", isExecutableFile: true), "app")
+        XCTAssertEqual(Runnable.label(name: "setup.command", isExecutableFile: false), "script")
+        XCTAssertEqual(Runnable.label(name: "Installer.pkg", isExecutableFile: false), "installer")
+        XCTAssertEqual(Runnable.label(name: "invoice", isExecutableFile: true), "program")
+        XCTAssertNil(Runnable.label(name: "lease.pdf", isExecutableFile: false))
+    }
+
+    func testReorderingCharactersAreFlaggedAndShown() {
+        let spoof = "invoice\u{202E}fdp.app"
+        XCTAssertEqual(Runnable.label(name: spoof, isExecutableFile: false), "odd name")
+        XCTAssertEqual(Runnable.visibleName(spoof), "invoice?fdp.app")
+    }
+}
