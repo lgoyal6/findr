@@ -14,7 +14,16 @@ final class SearchModel: ObservableObject {
     @Published private(set) var searching = false
     @Published private(set) var notice: String?
     @Published private(set) var snippets: [String: Snippet] = [:]
-    @Published var selected = 0 { didSet { loadSnippets() } }
+    @Published var selected = 0 {
+        didSet {
+            loadSnippets()
+            if listFocused, selected != oldValue || !oldListFocused, let item = selectedItem {
+                Announcer.say("\(item.candidate.name), \(selected + 1) of \(flat.count)")
+            }
+            oldListFocused = listFocused
+        }
+    }
+    private var oldListFocused = false
     /// True once the person arrows into the list. Space and Cmd-C act on the file only then.
     @Published var listFocused = false
     @Published var previewOpen = false
@@ -136,6 +145,10 @@ final class SearchModel: ObservableObject {
         inside = snapshot.output.inside
         query = snapshot.query
         notice = snapshot.notice
+        if searching, !snapshot.searching {
+            Announcer.say(name.isEmpty && inside.isEmpty ? "No files match"
+                          : "\(name.count) name matches, \(inside.count) found inside")
+        }
         searching = snapshot.searching
         // Keep the highlighted file if it is still there; otherwise start at the top.
         selected = flat.firstIndex { $0.id == previousID } ?? 0
@@ -282,12 +295,15 @@ final class SearchModel: ObservableObject {
     }
 
     @Published private(set) var toast: String?
-    @Published private(set) var actionError: String?
+    @Published private(set) var actionError: String? {
+        didSet { if let actionError { Announcer.say(actionError) } }
+    }
 
     func clearActionError() { actionError = nil }
 
     private func flash(_ message: String) {
         toast = message
+        Announcer.say(message)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
             if self?.toast == message { self?.toast = nil }
         }
