@@ -29,6 +29,15 @@ links = subprocess.check_output(['otool', '-L', str(app / 'MacOS/Leaf')], text=T
 assert '@rpath/Sparkle.framework/' in links, 'Executable is not linked to Sparkle'
 paths = subprocess.check_output(['otool', '-l', str(app / 'MacOS/Leaf')], text=True)
 assert '@executable_path/../Frameworks' in paths, 'Bundled framework runpath missing'
+reader = app / 'XPCServices/LeafPDFReader.xpc'
+assert (reader / 'Contents/MacOS/LeafPDFReader').is_file(), 'Sandboxed PDF reader missing'
+ents = subprocess.run(['codesign', '-d', '--entitlements', '-', '--xml', str(reader)],
+                      capture_output=True).stdout
+granted = plistlib.loads(ents) if ents.strip() else {}
+assert granted == {'com.apple.security.app-sandbox': True}, f'PDF reader must be sandboxed with nothing else: {granted}'
+app_ents = subprocess.run(['codesign', '-d', '--entitlements', '-', '--xml', str(app.parent)],
+                          capture_output=True).stdout
+assert not app_ents.strip(), 'Leaf itself should carry no entitlements'
 print(f"Verified Leaf {info['CFBundleVersion']} with embedded Sparkle and signed-update configuration")
 PY
 hdiutil verify dist/Leaf.dmg >/dev/null

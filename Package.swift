@@ -20,6 +20,11 @@ let package = Package(
                 .linkedFramework("ServiceManagement"),
             ]
         ),
+        .executableTarget(
+            name: "LeafPDFReader",
+            dependencies: ["FindrCore"],
+            linkerSettings: [.linkedFramework("PDFKit")]
+        ),
         .testTarget(name: "FindrCoreTests", dependencies: ["FindrCore"]),
         .testTarget(name: "FindrTests", dependencies: ["Findr", "FindrCore"]),
     ],

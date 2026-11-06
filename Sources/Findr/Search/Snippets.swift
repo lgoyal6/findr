@@ -1,6 +1,5 @@
 import FindrCore
 import Foundation
-import PDFKit
 
 /// Where a word appears inside a file: the page (for PDFs) and a short line around it.
 struct Snippet: Equatable {
@@ -25,15 +24,14 @@ enum Snippets {
         return nil
     }
 
+    /// Reads the bytes here, parses them in the sandboxed helper (see PDFReaderService).
     static func inPDF(path: String, term: String, isCurrent: () -> Bool = { true }) -> Snippet? {
         guard isCurrent() else { return nil }
-        guard let doc = PDFDocument(url: URL(fileURLWithPath: path)) else { return nil }
-        for index in 0..<min(doc.pageCount, 800) {
-            guard isCurrent() else { return nil }
-            guard let text = doc.page(at: index)?.string, let line = excerpt(in: text, term: term) else { continue }
-            return Snippet(page: index + 1, text: line)
-        }
-        return nil
+        let url = URL(fileURLWithPath: path)
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+        guard values?.isRegularFile == true, let size = values?.fileSize, size <= PDFReaderService.maxBytes,
+              let data = try? Data(contentsOf: url, options: .mappedIfSafe), isCurrent() else { return nil }
+        return PDFReaderService.snippet(data: data, term: term)
     }
 
     static func inText(path: String, term: String, isCurrent: () -> Bool = { true }) -> Snippet? {
@@ -56,14 +54,6 @@ enum Snippets {
 
     /// About 90 characters around the first word that starts with the term.
     static func excerpt(in text: String, term: String) -> String? {
-        let pattern = "\\b" + NSRegularExpression.escapedPattern(for: term)
-        guard let range = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return nil }
-        let start = text.index(range.lowerBound, offsetBy: -40, limitedBy: text.startIndex) ?? text.startIndex
-        let end = text.index(range.upperBound, offsetBy: 50, limitedBy: text.endIndex) ?? text.endIndex
-        let squeezed = text[start..<end]
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-        return (start > text.startIndex ? "…" : "") + squeezed + (end < text.endIndex ? "…" : "")
+        SnippetText.excerpt(in: text, term: term)
     }
 }
