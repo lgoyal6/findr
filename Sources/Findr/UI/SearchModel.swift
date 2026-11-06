@@ -16,6 +16,7 @@ final class SearchModel: ObservableObject {
     @Published private(set) var snippets: [String: Snippet] = [:]
     @Published var selected = 0 {
         didSet {
+            if selected != oldValue { confirmedRunnable = nil }
             loadSnippets()
             if listFocused, selected != oldValue || !oldListFocused, let item = selectedItem {
                 Announcer.say("\(item.candidate.name), \(selected + 1) of \(flat.count)")
@@ -43,12 +44,16 @@ final class SearchModel: ObservableObject {
     private let openFileWith: (URL, URL, @escaping (Error?) -> Void) -> Void
     private let recordPick: (String, String) -> Void
 
+    private let runnableLabel: (Candidate) -> String?
+
     init(openFile: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
          openFileWith: @escaping (URL, URL, @escaping (Error?) -> Void) -> Void = { file, app, done in
              NSWorkspace.shared.open([file], withApplicationAt: app,
                                      configuration: NSWorkspace.OpenConfiguration()) { _, error in done(error) }
          },
-         recordPick: @escaping (String, String) -> Void = { Store.shared.recordPick(query: $0, path: $1) }) {
+         recordPick: @escaping (String, String) -> Void = { Store.shared.recordPick(query: $0, path: $1) },
+         runnableLabel: @escaping (Candidate) -> String? = { Runnable.label(for: $0) }) {
+        self.runnableLabel = runnableLabel
         self.openFile = openFile
         self.openFileWith = openFileWith
         self.recordPick = recordPick
@@ -99,6 +104,7 @@ final class SearchModel: ObservableObject {
     // MARK: Searching
 
     private func textChanged() {
+        confirmedRunnable = nil
         if !settingFromHistory { historyIndex = nil }
         listFocused = false
         expandedSection = nil
@@ -259,8 +265,20 @@ final class SearchModel: ObservableObject {
 
     // MARK: Actions
 
+    /// The app or script the person was warned about; a second Return opens it.
+    private var confirmedRunnable: String?
+
     func open(_ item: ResultItem? = nil) {
         guard let item = item ?? selectedItem, flat.contains(where: { $0.id == item.id }) else { return }
+        if let kind = runnableLabel(item.candidate), confirmedRunnable != item.id {
+            confirmedRunnable = item.id
+            let name = Runnable.visibleName(item.candidate.name)
+            actionError = kind == "odd name"
+                ? "“\(name)” has hidden characters that can disguise its real type. Press Return again to open it anyway."
+                : "“\(name)” is \(kind == "app" || kind == "installer" ? "an" : "a") \(kind) and runs code when opened. Press Return again to open it."
+            return
+        }
+        confirmedRunnable = nil
         let url = URL(fileURLWithPath: item.candidate.path)
         guard openFile(url) else {
             actionError = "Couldn’t open \(item.candidate.name). Check that the file still exists, or use Open with."

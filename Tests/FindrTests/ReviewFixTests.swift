@@ -170,3 +170,43 @@ struct ReviewFixTests {
         model.reset()
     }
 }
+
+@MainActor
+struct RunnableOpenTests {
+    @Test func appNeedsSecondReturnAndResetsOnNewSelection() {
+        var opened: [String] = []
+        let model = SearchModel(openFile: { opened.append($0.path); return true }, recordPick: { _, _ in },
+                                runnableLabel: { $0.name.hasSuffix(".app") ? "app" : nil })
+        defer { model.reset() }
+        model.text = "leaf"
+        let app = ResultItem(candidate: Candidate(path: "/fixture/Leaf.app"), section: .name,
+                             tier: .exact, pickCount: 0, copies: [])
+        let pdf = ResultItem(candidate: Candidate(path: "/fixture/leaf.pdf"), section: .name,
+                             tier: .exact, pickCount: 0, copies: [])
+        model.apply(SearchSnapshot(query: QueryParser.parse("leaf"), output: .init(name: [app, pdf], inside: []),
+                                   notice: nil, searching: false), generation: 1)
+        model.open()
+        #expect(opened.isEmpty)
+        #expect(model.actionError?.contains("runs code") == true)
+        model.selected = 1
+        model.selected = 0
+        model.open()
+        #expect(opened.isEmpty, "Moving away cancels the earlier warning")
+        model.open()
+        #expect(opened == ["/fixture/Leaf.app"])
+    }
+
+    @Test func ordinaryFilesOpenOnFirstReturn() {
+        var opened = 0
+        let model = SearchModel(openFile: { _ in opened += 1; return true }, recordPick: { _, _ in },
+                                runnableLabel: { _ in nil })
+        defer { model.reset() }
+        model.text = "report"
+        let item = ResultItem(candidate: Candidate(path: "/fixture/report.pdf"), section: .name,
+                              tier: .exact, pickCount: 0, copies: [])
+        model.apply(SearchSnapshot(query: QueryParser.parse("report"), output: .init(name: [item], inside: []),
+                                   notice: nil, searching: false), generation: 1)
+        model.open()
+        #expect(opened == 1)
+    }
+}

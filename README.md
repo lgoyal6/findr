@@ -114,7 +114,8 @@ dist/Leaf.app/Contents/MacOS/Leaf --query "pace pdf"
 Leaf keeps your search history and which files you opened in `~/Library/Application Support/findr/state.json`.
 Search queries and file contents stay on your Mac. PDFs are read by `LeafPDFReader`, a
 helper inside the app that runs in Apple's App Sandbox with no file or network access, so a
-malformed PDF can't reach your files through Leaf. Sparkle contacts GitHub for update
+malformed PDF can't reach your files through Leaf. Opening an app, script or installer from
+Leaf asks for a second Return first. Sparkle contacts GitHub for update
 checks and downloads. System profiling is disabled.
 
 ## Publishing updates
