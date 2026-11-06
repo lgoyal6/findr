@@ -30,8 +30,9 @@ PY
 ./scripts/bundle.sh
 ./scripts/check-bundle.sh
 ./scripts/appcast.sh
-# Upload both files before changing the stable /releases/latest feed URL.
-gh release create "v$VERSION" dist/Leaf.dmg dist/appcast.xml \
+(cd dist && shasum -a 256 Leaf.dmg > Leaf.dmg.sha256)
+# Upload every file before changing the stable /releases/latest feed URL.
+gh release create "v$VERSION" dist/Leaf.dmg dist/appcast.xml dist/Leaf.dmg.sha256 \
   --target "$HEAD_SHA" --title "Leaf $VERSION" --draft --generate-notes
 gh release edit "v$VERSION" --draft=false --latest
 gh release view "v$VERSION" --json url --jq .url
