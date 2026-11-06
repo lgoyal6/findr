@@ -130,6 +130,7 @@ struct SettingsView: View {
                 ForEach(model.skipFolders, id: \.self) { path in
                     HStack {
                         Image(systemName: "folder")
+                            .accessibilityHidden(true)
                         Text(path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -140,6 +141,7 @@ struct SettingsView: View {
                             Image(systemName: "minus.circle.fill")
                         }
                         .buttonStyle(.borderless)
+                        .accessibilityLabel("Stop skipping \(path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))")
                     }
                 }
                 Button("Add folder…") { model.addSkipFolder() }

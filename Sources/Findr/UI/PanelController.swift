@@ -137,7 +137,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         var frame = panel.frame
         frame.origin.x = frame.midX - width / 2
         frame.size.width = width
-        panel.setFrame(frame, display: true, animate: true)
+        panel.setFrame(frame, display: true,
+                       animate: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
     /// Keyboard handling. Returns true when the key was used here and should not reach the text field.

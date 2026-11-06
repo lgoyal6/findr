@@ -24,6 +24,7 @@ struct ResultRow: View {
     let terms: [String]
     let filterLabel: String?
     let snippet: Snippet?
+    @Environment(\.colorSchemeContrast) private var contrast
 
     private static let relative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
@@ -59,7 +60,8 @@ struct ResultRow: View {
                     Text(snippet.text)
                         .font(.system(size: 11))
                         .italic()
-                        .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.85)) : AnyShapeStyle(.tertiary))
+                        .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.85))
+                                         : contrast == .increased ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
                         .lineLimit(1)
                 }
             }
@@ -86,6 +88,20 @@ struct ResultRow: View {
         )
         .padding(.horizontal, 8)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint("Opens the file")
+    }
+
+    /// What VoiceOver reads for the row: name, where it is, why it matched and when.
+    var accessibilityText: String {
+        var parts = [item.candidate.name.trimmingCharacters(in: .whitespaces), "in \(folder)"]
+        if !item.copies.isEmpty { parts.append("\(item.copies.count + 1) identical copies") }
+        if let snippet { parts.append(snippet.text) }
+        parts.append(tag)
+        if let date { parts.append(date) }
+        return parts.joined(separator: ", ")
     }
 
     private var highlightedName: AttributedString {

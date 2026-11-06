@@ -72,6 +72,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func setUpStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = LeafLogo.image(size: 18)
+        statusItem.button?.image?.accessibilityDescription = "Leaf"
+        statusItem.button?.setAccessibilityLabel("Leaf")
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Leaf  \(Store.shared.hotKey.label)", action: #selector(togglePanel), keyEquivalent: "")
         menu.addItem(.separator())

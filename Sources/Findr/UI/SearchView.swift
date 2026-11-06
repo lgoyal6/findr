@@ -35,10 +35,13 @@ struct SearchView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             TextField("Search files, e.g. pace pdf last week", text: $model.text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 22))
                 .focused($fieldFocused)
+                .accessibilityLabel("Search files")
+                .accessibilityHint("Type part of a name. Down arrow moves into the results.")
             if model.searching {
                 ProgressView().controlSize(.small)
             }
@@ -164,6 +167,15 @@ struct SearchView: View {
                       filterLabel: model.query.filterLabel,
                       snippet: item.section == .inside ? model.snippet(for: item) : nil)
                 .id(item.id)
+                .accessibilityAction { model.open(item) }
+                .accessibilityAction(named: "Show in Finder") {
+                    model.selected = offset + index
+                    model.reveal()
+                }
+                .accessibilityAction(named: "Copy path") {
+                    model.selected = offset + index
+                    model.copyPath()
+                }
                 .onTapGesture(count: 2) { model.open(item) }
                 .onTapGesture {
                     model.selected = offset + index
@@ -188,6 +200,9 @@ struct SearchView: View {
         .padding(.top, 10)
         .padding(.bottom, 4)
         .background(.bar)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), \(count)")
+        .accessibilityAddTraits(.isHeader)
     }
 
     private var footer: some View {
@@ -213,6 +228,16 @@ struct SearchView: View {
             Text(label).font(.system(size: 11))
         }
         .foregroundStyle(.secondary)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(Self.spoken(keys))")
+    }
+}
+
+extension SearchView {
+    /// "⌘⇧C" read aloud as "Command Shift C".
+    static func spoken(_ keys: String) -> String {
+        let names: [Character: String] = ["⌘": "Command", "⇧": "Shift", "⌥": "Option", "⌃": "Control", "↵": "Return"]
+        return keys.map { names[$0] ?? String($0) }.joined(separator: " ")
     }
 }
 
