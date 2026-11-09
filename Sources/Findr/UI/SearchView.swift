@@ -36,7 +36,7 @@ struct SearchView: View {
                 .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            TextField("Search files, e.g. pace pdf last week", text: $model.text)
+            TextField("Search files, e.g. invoice pdf last week", text: $model.text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 22))
                 .focused($fieldFocused)
@@ -253,7 +253,7 @@ private struct EmptyHint: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
-                    ForEach(["pace pdf", "notes doc this week", "screenshot today", "invoice in downloads"], id: \.self) {
+                    ForEach(["invoice pdf", "notes doc this week", "screenshot today", "invoice in downloads"], id: \.self) {
                         example in
                         Button(example) { pick(example) }
                             .buttonStyle(.plain)
