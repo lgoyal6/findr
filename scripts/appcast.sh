@@ -8,18 +8,13 @@ ACCOUNT="io.github.lgoyal6.findr"
 APP="dist/Leaf.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
 PUBLIC_KEY="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")"
+SIGNING_KEY=(--account "$ACCOUNT")
 if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
-  python3 - "$TOOLS/generate_keys" "$ACCOUNT" <<'PY'
-import os
-import subprocess
-import sys
-import tempfile
-
-with tempfile.NamedTemporaryFile(mode='w') as private_key:
-    private_key.write(os.environ['SPARKLE_PRIVATE_KEY'])
-    private_key.flush()
-    subprocess.run([sys.argv[1], '--account', sys.argv[2], '-f', private_key.name], check=True)
-PY
+  KEY_FILE="$(mktemp)"
+  trap 'rm -f "$KEY_FILE"' EXIT
+  printf '%s' "$SPARKLE_PRIVATE_KEY" > "$KEY_FILE"
+  "$TOOLS/generate_keys" --account "$ACCOUNT" -f "$KEY_FILE"
+  SIGNING_KEY=(--ed-key-file "$KEY_FILE")
   unset SPARKLE_PRIVATE_KEY
 fi
 if [[ "$("$TOOLS/generate_keys" --account "$ACCOUNT" -p)" != "$PUBLIC_KEY" ]]; then
@@ -27,15 +22,15 @@ if [[ "$("$TOOLS/generate_keys" --account "$ACCOUNT" -p)" != "$PUBLIC_KEY" ]]; t
   exit 1
 fi
 
-"$TOOLS/generate_appcast" --account "$ACCOUNT" --maximum-deltas 0 \
+"$TOOLS/generate_appcast" "${SIGNING_KEY[@]}" --maximum-deltas 0 \
   --download-url-prefix "https://github.com/lgoyal6/findr/releases/download/v${VERSION}/" \
   --link https://github.com/lgoyal6/findr -o dist/appcast.xml dist
-"$TOOLS/sign_update" --account "$ACCOUNT" --verify dist/appcast.xml
+"$TOOLS/sign_update" "${SIGNING_KEY[@]}" --verify dist/appcast.xml
 SIGNATURE="$(python3 - <<'PY'
 import xml.etree.ElementTree as ET
 root = ET.parse('dist/appcast.xml')
 print(root.find('./channel/item/enclosure').attrib['{http://www.andymatuschak.org/xml-namespaces/sparkle}edSignature'])
 PY
 )"
-"$TOOLS/sign_update" --account "$ACCOUNT" --verify dist/Leaf.dmg "$SIGNATURE"
+"$TOOLS/sign_update" "${SIGNING_KEY[@]}" --verify dist/Leaf.dmg "$SIGNATURE"
 echo "Verified dist/appcast.xml and its signed DMG"
