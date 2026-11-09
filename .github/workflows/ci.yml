@@ -15,7 +15,26 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Test
         run: swift test
+      - name: Test release publishing
+        run: python3 -B -m unittest discover -s scripts/tests
       - name: Build app and DMG
         run: ./scripts/bundle.sh
       - name: Verify bundled updater
         run: ./scripts/check-bundle.sh
+
+  publish:
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    permissions:
+      contents: write
+    concurrency:
+      group: leaf-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Publish a new version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: ./scripts/release.sh --if-needed

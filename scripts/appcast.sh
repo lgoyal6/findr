@@ -8,6 +8,20 @@ ACCOUNT="io.github.lgoyal6.findr"
 APP="dist/Leaf.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
 PUBLIC_KEY="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")"
+if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
+  python3 - "$TOOLS/generate_keys" "$ACCOUNT" <<'PY'
+import os
+import subprocess
+import sys
+import tempfile
+
+with tempfile.NamedTemporaryFile(mode='w') as private_key:
+    private_key.write(os.environ['SPARKLE_PRIVATE_KEY'])
+    private_key.flush()
+    subprocess.run([sys.argv[1], '--account', sys.argv[2], '-f', private_key.name], check=True)
+PY
+  unset SPARKLE_PRIVATE_KEY
+fi
 if [[ "$("$TOOLS/generate_keys" --account "$ACCOUNT" -p)" != "$PUBLIC_KEY" ]]; then
   echo "The Keychain signing key does not match this app's public key." >&2
   exit 1
