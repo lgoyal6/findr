@@ -129,16 +129,24 @@ Automatic checks are enabled; automatic installation is disabled by default.
 For each release:
 
 1. Bump `VERSION`, commit the changes, and merge the reviewed, passing PR to `main`.
-2. On the signing Mac, check out the current `main`, then run `./scripts/release.sh`.
+2. After CI passes, its publishing job builds and verifies the DMG, signs the update
+   feed, and publishes the new release. Merges with an already published version
+   skip publishing. Retry an interrupted publishing job to resume its draft release.
+
+CI imports the existing Sparkle signing key from the `SPARKLE_PRIVATE_KEY` repository
+secret into the temporary runner's Keychain. Pull requests only build and test.
+To publish manually, check out the current `main` on the signing Mac and run
+`./scripts/release.sh`.
 
 The script builds and verifies the app, signs `Leaf.dmg` and `appcast.xml`, uploads
 both to a draft GitHub release, then publishes the release as latest. The installed
 app reads `https://github.com/lgoyal6/findr/releases/latest/download/appcast.xml`.
 The script refuses a dirty checkout, an unmerged commit, or a reused or older version.
 
-The private signing key is in the login Keychain under Sparkle's
-`io.github.lgoyal6.findr` account. It is never written to the repository or uploaded
-to GitHub. To sign from another Mac, transfer the existing key securely using
+The signing Mac keeps the private key in the login Keychain under Sparkle's
+`io.github.lgoyal6.findr` account. CI uses the encrypted repository secret described
+above. Keep the key out of source control and release assets.
+To sign from another Mac, transfer the existing key securely using
 Sparkle's `generate_keys -x` and `-f` options with that same `--account` value.
 Do not generate a replacement key for existing installs.
 
