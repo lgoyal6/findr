@@ -133,8 +133,9 @@ For each release:
    feed, and publishes the new release. Merges with an already published version
    skip publishing. Retry an interrupted publishing job to resume its draft release.
 
-CI imports the existing Sparkle signing key from the `SPARKLE_PRIVATE_KEY` repository
-secret into the temporary runner's Keychain. Pull requests only build and test.
+CI reads the existing Sparkle signing key from the `SPARKLE_PRIVATE_KEY` repository
+secret, validates its public key, and signs using a protected temporary key file
+that is removed when signing finishes. Pull requests only build and test.
 To publish manually, check out the current `main` on the signing Mac and run
 `./scripts/release.sh`.
 
