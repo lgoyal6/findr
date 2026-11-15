@@ -4,6 +4,11 @@
 
 Spotlight finds my config files before my PDF. Leaf is the file search I actually wanted.
 
+**[Download Leaf for macOS](https://github.com/lgoyal6/findr/releases/latest)**
+· **[Watch the product demo](https://lakshgoyal.com/blog/leaf-search.html)**
+
+![Leaf filtering image files and previewing a matching result](docs/leaf-demo.jpg)
+
 Press **⌘⇧Space**, type what you'd say, and get two sections:
 
 - **Name**: files whose name matches, best match first
