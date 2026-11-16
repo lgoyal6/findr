@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Darwin
 import FindrCore
 import LeafBrowserBridge
 import SwiftUI
@@ -9,15 +10,19 @@ struct BrowserFileRow: Identifiable {
     let directory: Bool
     let modified: Date?
     let size: Int64?
+    let hidden: Bool
     var id: String { url.path }
     var name: String { url.lastPathComponent }
+    var modifiedForSorting: Date { modified ?? .distantPast }
+    var sizeForSorting: Int64 { size ?? -1 }
 
     init(_ url: URL) {
         self.url = url
-        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey, .fileSizeKey])
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey, .fileSizeKey, .isHiddenKey])
         directory = values?.isDirectory ?? false
         modified = values?.contentModificationDate
         size = values?.fileSize.map(Int64.init)
+        hidden = values?.isHidden == true || url.lastPathComponent.hasPrefix(".")
     }
 }
 
@@ -29,11 +34,23 @@ final class BrowserFilePickerModel: ObservableObject {
     @Published private(set) var sidebarSections = BrowserSidebarSection.available()
     @Published private(set) var loading = false
     @Published private(set) var files: [BrowserFileRow] = []
-    @Published var selection = Set<String>()
+    @Published var selection = Set<String>() {
+        didSet { if selection.isEmpty { selectionAnchor = nil } }
+    }
     @Published var grid = false
     @Published var preview = true
     @Published var error: String?
     @Published var exporting = false
+    @Published var sortOrder = [KeyPathComparator(\BrowserFileRow.modifiedForSorting, order: .reverse)]
+    @Published var fileKind: FileKind? { didSet { selection = [] } }
+    @Published var modifiedSince = "Any date" { didSet { selection = [] } }
+    @Published var matchingTypesOnly = true { didSet { selection = [] } }
+    @Published var showHiddenFiles = false { didSet { refresh() } }
+    @Published var showingGoToFolder = false
+    @Published var folderPath = ""
+    private var selectionAnchor: String?
+    private var selectionLead: String?
+    private var folderWatcher: DispatchSourceFileSystemObject?
     private var back: [BrowserPickerLocation] = []
     private var forward: [BrowserPickerLocation] = []
     private var metadataQuery: NSMetadataQuery?
@@ -46,24 +63,47 @@ final class BrowserFilePickerModel: ObservableObject {
     }
 
     deinit {
+        folderWatcher?.cancel()
         metadataQuery?.stop()
         metadataObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
     var canGoBack: Bool { !back.isEmpty }
     var canGoForward: Bool { !forward.isEmpty }
+    var hasSearch: Bool { !search.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     var selectedFiles: [URL] { rows.filter { selection.contains($0.id) && !$0.directory }.map(\.url) }
     var previewFile: BrowserFileRow? { rows.first { selection.contains($0.id) && !$0.directory } }
-    var canChoose: Bool { !exporting && !selectedFiles.isEmpty && selectedFiles.allSatisfy(request.allows) }
+    var canChoose: Bool {
+        !exporting && !selectedFiles.isEmpty && (request.multiple || selectedFiles.count == 1)
+            && selectedFiles.allSatisfy(request.allows)
+    }
+    var selectedFolder: BrowserFileRow? {
+        guard selection.count == 1 else { return nil }
+        return rows.first { selection.contains($0.id) && $0.directory }
+    }
+    var canOpenSelection: Bool { !exporting && (selectedFolder != nil || canChoose) }
 
     var rows: [BrowserFileRow] {
-        guard !search.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return files }
-        var seen = Set<String>()
-        return (search.name + search.inside).compactMap { item in
-            let url = URL(fileURLWithPath: item.candidate.path)
-            guard seen.insert(url.path).inserted else { return nil }
-            return BrowserFileRow(url)
+        let source: [BrowserFileRow]
+        if !hasSearch {
+            source = files
+        } else {
+            var seen = Set<String>()
+            source = (search.name + search.inside).compactMap { item in
+                let url = URL(fileURLWithPath: item.candidate.path)
+                guard seen.insert(url.path).inserted else { return nil }
+                return BrowserFileRow(url)
+            }
         }
+        let date = QueryParser.parse(modifiedSince).date
+        return source.filter { row in
+            if !showHiddenFiles && row.hidden { return false }
+            if row.directory { return true }
+            if matchingTypesOnly && !request.allows(row.url) { return false }
+            if let fileKind, FileKind.of(path: row.id) != fileKind { return false }
+            if let date, !date.contains(row.modified ?? .distantPast) { return false }
+            return true
+        }.sorted(using: sortOrder + [KeyPathComparator(\BrowserFileRow.name), KeyPathComparator(\BrowserFileRow.id)])
     }
 
     var ancestors: [URL] {
@@ -104,21 +144,81 @@ final class BrowserFilePickerModel: ObservableObject {
         loadFolder()
     }
 
-    func select(_ row: BrowserFileRow) {
+    func select(_ row: BrowserFileRow, modifiers: NSEvent.ModifierFlags? = nil) {
         guard !exporting else { return }
-        if request.multiple, NSEvent.modifierFlags.contains(.command) {
+        let modifiers = modifiers ?? NSApp?.currentEvent?.modifierFlags ?? NSEvent.modifierFlags
+        if request.multiple, modifiers.contains(.shift),
+           let anchor = selectionAnchor,
+           let start = rows.firstIndex(where: { $0.id == anchor }),
+           let end = rows.firstIndex(where: { $0.id == row.id }) {
+            let range = Set(rows[min(start, end)...max(start, end)].map(\.id))
+            selection = modifiers.contains(.command) ? selection.union(range) : range
+            selectionLead = row.id
+            return
+        }
+        if request.multiple, modifiers.contains(.command) {
             if selection.contains(row.id) { selection.remove(row.id) }
             else { selection.insert(row.id) }
         } else { selection = [row.id] }
+        selectionAnchor = row.id
+        selectionLead = row.id
+    }
+
+    func moveSelection(by offset: Int, extending: Bool = false) {
+        let visible = rows
+        guard !visible.isEmpty else { return }
+        let current = visible.firstIndex { $0.id == selectionLead && selection.contains($0.id) }
+            ?? visible.firstIndex { selection.contains($0.id) }
+        let index = current.map { min(max($0 + offset, 0), visible.count - 1) } ?? 0
+        select(visible[index], modifiers: extending ? .shift : [])
     }
 
     func openSelection(choose: () -> Void) {
-        guard let row = rows.first(where: { selection.contains($0.id) }) else { return }
-        if row.directory { navigate(row.url) }
+        if let folder = selectedFolder { navigate(folder.url) }
         else if canChoose { choose() }
     }
 
+    func goToFolder(_ path: String) -> Bool {
+        let expanded = (path.trimmingCharacters(in: .whitespacesAndNewlines) as NSString).expandingTildeInPath
+        let base = location.folder ?? FileManager.default.homeDirectoryForCurrentUser
+        let url = URL(fileURLWithPath: expanded, relativeTo: base).standardizedFileURL
+        guard !expanded.isEmpty, (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+            error = "That folder could not be found."
+            return false
+        }
+        error = nil
+        if location.folder == url { refresh() }
+        else { navigate(url) }
+        return true
+    }
+
+    func beginGoToFolder() {
+        folderPath = location.folder?.path ?? "~"
+        error = nil
+        showingGoToFolder = true
+    }
+
+    func goToParent() {
+        guard let folder = location.folder, folder.path != "/" else { return }
+        navigate(folder.deletingLastPathComponent())
+    }
+
+    func refresh() {
+        guard !exporting else { return }
+        let previousSelection = selection
+        let previousAnchor = selectionAnchor
+        let previousLead = selectionLead
+        loadFolder()
+        let visible = Set(rows.map(\.id))
+        selection = previousSelection.intersection(visible)
+        selectionAnchor = previousAnchor.flatMap { visible.contains($0) ? $0 : nil }
+        selectionLead = previousLead.flatMap { visible.contains($0) ? $0 : nil }
+        sidebarSections = BrowserSidebarSection.available()
+    }
+
     func loadFolder() {
+        folderWatcher?.cancel()
+        folderWatcher = nil
         metadataQuery?.stop()
         metadataQuery = nil
         metadataObservers.forEach(NotificationCenter.default.removeObserver)
@@ -131,10 +231,21 @@ final class BrowserFilePickerModel: ObservableObject {
         do {
             files = try FileManager.default.contentsOfDirectory(at: folder,
                 includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .fileSizeKey],
-                options: [.skipsHiddenFiles]).map(BrowserFileRow.init).sorted {
-                    if $0.directory != $1.directory { return $0.directory }
-                    return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                options: showHiddenFiles ? [] : [.skipsHiddenFiles]).map(BrowserFileRow.init)
+            let descriptor = Darwin.open(folder.path, O_EVTONLY)
+            if descriptor >= 0 {
+                let watcher = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor,
+                    eventMask: [.write, .delete, .rename], queue: .main)
+                watcher.setCancelHandler { Darwin.close(descriptor) }
+                watcher.setEventHandler { [weak self] in
+                    MainActor.assumeIsolated {
+                        guard let self, self.location.folder == folder else { return }
+                        self.refresh()
+                    }
                 }
+                folderWatcher = watcher
+                watcher.resume()
+            }
         } catch {
             files = []
             self.error = error.localizedDescription
@@ -174,6 +285,8 @@ final class BrowserFilePickerModel: ObservableObject {
     }
 
     func stop() {
+        folderWatcher?.cancel()
+        folderWatcher = nil
         metadataQuery?.stop()
         metadataQuery = nil
         metadataObservers.forEach(NotificationCenter.default.removeObserver)
@@ -188,6 +301,7 @@ struct BrowserFilePicker: View {
     let choose: () -> Void
     let cancel: () -> Void
     let useFinder: () -> Void
+    @FocusState private var filesFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -205,6 +319,7 @@ struct BrowserFilePicker: View {
                 Divider()
                 VStack(spacing: 0) {
                     toolbar
+                    filters
                     Divider()
                     HStack(spacing: 0) {
                         fileContent.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -230,13 +345,28 @@ struct BrowserFilePicker: View {
                 }
                 Spacer()
                 Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
-                Button(model.request.multiple && model.selectedFiles.count > 1
-                       ? "Choose \(model.selectedFiles.count) Files" : "Choose", action: choose)
-                    .keyboardShortcut(.defaultAction).disabled(!model.canChoose)
+                Button(model.selectedFolder != nil ? "Open" : model.request.multiple && model.selectedFiles.count > 1
+                       ? "Choose \(model.selectedFiles.count) Files" : "Choose") {
+                    model.openSelection(choose: choose)
+                }.keyboardShortcut(.defaultAction).disabled(!model.canOpenSelection)
             }.padding(14)
         }
         .frame(minWidth: 820, minHeight: 490)
         .disabled(model.exporting)
+        .sheet(isPresented: $model.showingGoToFolder) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Go to Folder").font(.headline)
+                TextField("Folder path", text: $model.folderPath).frame(width: 430)
+                if let error = model.error { Text(error).font(.caption).foregroundStyle(.red) }
+                HStack {
+                    Spacer()
+                    Button("Cancel") { model.showingGoToFolder = false }.keyboardShortcut(.cancelAction)
+                    Button("Go") {
+                        if model.goToFolder(model.folderPath) { model.showingGoToFolder = false }
+                    }.keyboardShortcut(.defaultAction)
+                }
+            }.padding(20)
+        }
         .onChange(of: search.text) { model.selection = [] }
         .onChange(of: model.selection) { _, selected in
             if !model.request.multiple, selected.count > 1 {
@@ -266,11 +396,40 @@ struct BrowserFilePicker: View {
     private var toolbar: some View {
         HStack(spacing: 10) {
             Button(action: model.goBack) { Image(systemName: "chevron.left") }
-                .disabled(!model.canGoBack).help("Back")
+                .disabled(!model.canGoBack).help("Back").keyboardShortcut("[", modifiers: .command)
             Button(action: model.goForward) { Image(systemName: "chevron.right") }
-                .disabled(!model.canGoForward).help("Forward")
-            Text(model.location.title).fontWeight(.medium).lineLimit(1)
+                .disabled(!model.canGoForward).help("Forward").keyboardShortcut("]", modifiers: .command)
+            Text(model.hasSearch ? "Search Results" : model.location.title).fontWeight(.medium).lineLimit(1)
             Spacer(minLength: 4)
+            Menu {
+                Button("Go to Folder…", action: model.beginGoToFolder)
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                Button("Enclosing Folder", action: model.goToParent)
+                    .keyboardShortcut(.upArrow, modifiers: .command)
+                    .disabled(model.location.folder == nil || model.location.folder?.path == "/")
+                Button("Refresh", action: model.refresh).keyboardShortcut("r", modifiers: .command)
+                Toggle("Show Hidden Files", isOn: $model.showHiddenFiles)
+                    .keyboardShortcut(".", modifiers: [.command, .shift])
+            } label: { Image(systemName: "ellipsis.circle") }
+                .help("Folder actions").accessibilityLabel("Folder actions")
+            Menu {
+                Button("Name (A–Z)") { model.sortOrder = [KeyPathComparator(\BrowserFileRow.name)] }
+                Button("Date Modified (Newest First)") {
+                    model.sortOrder = [KeyPathComparator(\BrowserFileRow.modifiedForSorting, order: .reverse)]
+                }
+                Button("Size (Largest First)") {
+                    model.sortOrder = [KeyPathComparator(\BrowserFileRow.sizeForSorting, order: .reverse)]
+                }
+                Divider()
+                Button("Reverse Order") {
+                    model.sortOrder = model.sortOrder.map { comparator in
+                        var reversed = comparator
+                        reversed.order = comparator.order == .forward ? .reverse : .forward
+                        return reversed
+                    }
+                }
+            } label: { Image(systemName: "arrow.up.arrow.down") }
+                .help("Sort files").accessibilityLabel("Sort files")
             Picker("View", selection: $model.grid) {
                 Image(systemName: "list.bullet").tag(false)
                 Image(systemName: "square.grid.2x2").tag(true)
@@ -281,61 +440,127 @@ struct BrowserFilePicker: View {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search with Leaf", text: $search.text).textFieldStyle(.plain)
                     .accessibilityLabel("Search with Leaf")
+                    .onKeyPress(.downArrow) {
+                        filesFocused = true
+                        model.moveSelection(by: 1)
+                        return .handled
+                    }
                 if search.searching { ProgressView().controlSize(.mini) }
             }.padding(7).background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
                 .frame(width: 215)
         }.buttonStyle(.borderless).padding(10)
     }
 
+    private var filters: some View {
+        HStack(spacing: 12) {
+            Picker("Kind", selection: $model.fileKind) {
+                Text("All kinds").tag(nil as FileKind?)
+                ForEach(FileKind.allCases, id: \.self) { kind in
+                    Text(kind.rawValue.uppercased()).tag(Optional(kind))
+                }
+            }.frame(width: 175)
+            Picker("Modified", selection: $model.modifiedSince) {
+                ForEach(["Any date", "Today", "Yesterday", "This week", "Last week", "This month", "Last month", "This year"], id: \.self) {
+                    Text($0)
+                }
+            }.frame(width: 200)
+            if !model.request.accept.isEmpty {
+                Toggle("Allowed types only", isOn: $model.matchingTypesOnly)
+                    .help("Show files accepted by this website")
+            }
+            Spacer(minLength: 0)
+        }.font(.system(size: 11)).padding(.horizontal, 10).padding(.bottom, 10)
+    }
+
     @ViewBuilder private var fileContent: some View {
-        if model.loading, search.text.isEmpty {
+        if (model.loading && !model.hasSearch) || (search.searching && model.rows.isEmpty) {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if model.rows.isEmpty, search.text.isEmpty {
-            Text("No items in \(model.location.title)").foregroundStyle(.secondary)
+        } else if model.rows.isEmpty {
+            Text(model.hasSearch ? "No files match your search" : "No files match in \(model.location.title)").foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.grid {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 12) {
-                    ForEach(model.rows) { row in
-                        VStack(spacing: 7) {
-                            Image(nsImage: NSWorkspace.shared.icon(forFile: row.id)).resizable()
-                                .frame(width: 44, height: 44)
-                            Text(row.name).font(.system(size: 12)).lineLimit(2)
-                                .multilineTextAlignment(.center).frame(height: 32)
-                        }
-                        .padding(9).frame(maxWidth: .infinity)
-                        .background(model.selection.contains(row.id) ? Color.accentColor.opacity(0.2) : Color.clear,
-                                    in: RoundedRectangle(cornerRadius: 7))
-                        .opacity(row.directory || model.request.allows(row.url) ? 1 : 0.4)
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) { model.select(row); model.openSelection(choose: choose) }
-                        .onTapGesture { model.select(row) }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityAction { model.select(row) }
-                    }
-                }.padding(12)
-            }
+            gridContent
         } else {
-            Table(model.rows, selection: $model.selection) {
-                TableColumn("Name") { row in
+            Table(model.rows, selection: $model.selection, sortOrder: $model.sortOrder) {
+                TableColumn("Name", value: \.name) { row in
                     HStack(spacing: 7) {
                         Image(nsImage: NSWorkspace.shared.icon(forFile: row.id)).resizable().frame(width: 18, height: 18)
-                        Text(row.name).lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.name).lineLimit(1)
+                            if model.hasSearch {
+                                Text(row.url.deletingLastPathComponent().path)
+                                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                                    .lineLimit(1).truncationMode(.middle)
+                            }
+                        }.help(row.id)
                             .foregroundStyle(row.directory || model.request.allows(row.url) ? .primary : .tertiary)
                     }.padding(.vertical, 3)
                 }.width(min: 140, ideal: 240)
-                TableColumn("Date Modified") { row in
+                TableColumn("Date Modified", value: \.modifiedForSorting) { row in
                     Text(row.modified?.formatted(date: .abbreviated, time: .omitted) ?? "")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }.width(105)
-                TableColumn("Size") { row in
+                TableColumn("Size", value: \.sizeForSorting) { row in
                     Text(row.directory ? "" : row.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }.width(65)
             }
             .contextMenu(forSelectionType: String.self) { _ in } primaryAction: { _ in
                 model.openSelection(choose: choose)
+            }
+            .focused($filesFocused)
+        }
+    }
+
+    private var gridContent: some View {
+        GeometryReader { geometry in
+            ScrollViewReader { scroll in
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 12)], spacing: 12) {
+                        ForEach(model.rows) { row in
+                            VStack(spacing: 7) {
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: row.id)).resizable()
+                                    .frame(width: 44, height: 44)
+                                Text(row.name).font(.system(size: 12)).lineLimit(2)
+                                    .multilineTextAlignment(.center).frame(height: 32)
+                            }
+                            .padding(9).frame(maxWidth: .infinity)
+                            .background(model.selection.contains(row.id) ? Color.accentColor.opacity(0.2) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 7))
+                            .opacity(row.directory || model.request.allows(row.url) ? 1 : 0.4)
+                            .contentShape(Rectangle())
+                            .help(row.id)
+                            .onTapGesture(count: 2) {
+                                model.selection = [row.id]
+                                model.openSelection(choose: choose)
+                            }
+                            .onTapGesture { filesFocused = true; model.select(row) }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityAction { filesFocused = true; model.select(row) }
+                            .id(row.id)
+                        }
+                    }.padding(12)
+                }
+                .focusable().focused($filesFocused)
+                .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
+                    let columns = max(1, Int((geometry.size.width - 12) / 112))
+                    let offset: Int
+                    switch press.key {
+                    case .leftArrow: offset = -1
+                    case .rightArrow: offset = 1
+                    case .upArrow: offset = -columns
+                    case .downArrow: offset = columns
+                    default: return .ignored
+                    }
+                    model.moveSelection(by: offset, extending: press.modifiers.contains(.shift))
+                    return .handled
+                }
+                .onChange(of: model.selection) { _, selected in
+                    if let id = model.rows.last(where: { selected.contains($0.id) })?.id {
+                        scroll.scrollTo(id)
+                    }
+                }
             }
         }
     }
@@ -358,6 +583,8 @@ struct BrowserFilePicker: View {
             VStack(spacing: 8) {
                 PreviewPane(path: file.id, page: nil, term: nil)
                 Text(file.name).font(.system(size: 12, weight: .medium)).lineLimit(2)
+                Text(file.url.deletingLastPathComponent().path).font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(2).truncationMode(.middle).textSelection(.enabled)
             }.padding(12)
         } else {
             VStack(spacing: 10) {
@@ -389,6 +616,7 @@ final class BrowserUploadController: NSObject, NSWindowDelegate, NSOpenSavePanel
     private var pending: [BrowserUploadSession] = []
     private var timer: Timer?
     private var nativePanel: NSOpenPanel?
+    private var keyMonitor: Any?
     var hasSession: Bool { session != nil }
 
     func receive(_ url: URL) {
@@ -434,6 +662,31 @@ final class BrowserUploadController: NSObject, NSWindowDelegate, NSOpenSavePanel
             useFinder: { [weak self] in self?.useFinder() }))
         window.center()
         self.window = window
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, let model = self.model, event.window === self.window,
+                  self.nativePanel == nil, !model.exporting, !model.showingGoToFolder else { return event }
+            let modifiers = event.modifierFlags.intersection([.command, .shift, .control, .option])
+            if modifiers == [.command, .shift] {
+                if event.charactersIgnoringModifiers?.lowercased() == "g" {
+                    model.beginGoToFolder()
+                    return nil
+                }
+                if event.keyCode == 47 {
+                    model.showHiddenFiles.toggle()
+                    return nil
+                }
+            }
+            if modifiers == .command {
+                switch event.charactersIgnoringModifiers {
+                case "r": model.refresh(); return nil
+                case "[": model.goBack(); return nil
+                case "]": model.goForward(); return nil
+                default: break
+                }
+                if event.keyCode == 126 { model.goToParent(); return nil }
+            }
+            return event
+        }
         show()
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -497,6 +750,8 @@ final class BrowserUploadController: NSObject, NSWindowDelegate, NSOpenSavePanel
     }
 
     private func close() {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
         timer?.invalidate()
         timer = nil
         nativePanel?.cancel(nil)
