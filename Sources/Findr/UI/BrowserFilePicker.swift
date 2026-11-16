@@ -187,6 +187,7 @@ struct BrowserFilePicker: View {
     @ObservedObject var search: SearchModel
     let choose: () -> Void
     let cancel: () -> Void
+    let useFinder: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -218,6 +219,9 @@ struct BrowserFilePicker: View {
             }
             Divider()
             HStack {
+                Button("Use Finder", action: useFinder)
+                    .keyboardShortcut("f", modifiers: [.command, .shift])
+                    .help("Use the macOS file picker (⌘⇧F)")
                 if let error = model.error {
                     Text(error).font(.caption).foregroundStyle(.red).lineLimit(2)
                 } else if !model.request.accept.isEmpty {
@@ -378,12 +382,13 @@ struct BrowserFilePicker: View {
 }
 
 @MainActor
-final class BrowserUploadController: NSObject, NSWindowDelegate {
+final class BrowserUploadController: NSObject, NSWindowDelegate, NSOpenSavePanelDelegate {
     private var window: NSWindow?
     private var model: BrowserFilePickerModel?
     private var session: BrowserUploadSession?
     private var pending: [BrowserUploadSession] = []
     private var timer: Timer?
+    private var nativePanel: NSOpenPanel?
     var hasSession: Bool { session != nil }
 
     func receive(_ url: URL) {
@@ -400,6 +405,7 @@ final class BrowserUploadController: NSObject, NSWindowDelegate {
     }
 
     func toggle() {
+        if nativePanel != nil { show(); return }
         guard let window else { return }
         if window.isVisible { window.orderOut(nil) }
         else { NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil) }
@@ -408,6 +414,7 @@ final class BrowserUploadController: NSObject, NSWindowDelegate {
     func show() {
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+        nativePanel?.makeKeyAndOrderFront(nil)
     }
 
     private func next() {
@@ -423,7 +430,8 @@ final class BrowserUploadController: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentView = NSHostingView(rootView: BrowserFilePicker(model: model, search: model.search,
-            choose: { [weak self] in self?.choose() }, cancel: { [weak self] in self?.cancel() }))
+            choose: { [weak self] in self?.choose() }, cancel: { [weak self] in self?.cancel() },
+            useFinder: { [weak self] in self?.useFinder() }))
         window.center()
         self.window = window
         show()
@@ -436,8 +444,35 @@ final class BrowserUploadController: NSObject, NSWindowDelegate {
     }
 
     private func choose() {
-        guard let session, let model, model.canChoose else { return }
-        let urls = model.selectedFiles
+        guard let model, model.canChoose else { return }
+        export(model.selectedFiles)
+    }
+
+    private func useFinder() {
+        guard let window, let model, let session, !model.exporting, nativePanel == nil else { return }
+        let panel = NSOpenPanel()
+        panel.message = "Choose \(model.request.multiple ? "files" : "a file") for \(model.request.displayOrigin)"
+        panel.prompt = "Choose"
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = model.request.multiple
+        panel.directoryURL = model.location.folder
+        panel.delegate = self
+        nativePanel = panel
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self, self.session?.id == session.id else { return }
+            self.nativePanel = nil
+            if response == .OK { self.export(panel.urls) }
+        }
+    }
+
+    func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
+        if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { return true }
+        return model?.request.allows(url) ?? false
+    }
+
+    private func export(_ urls: [URL]) {
+        guard let session, let model, !model.exporting else { return }
         let request = model.request
         model.exporting = true
         model.error = nil
@@ -464,6 +499,8 @@ final class BrowserUploadController: NSObject, NSWindowDelegate {
     private func close() {
         timer?.invalidate()
         timer = nil
+        nativePanel?.cancel(nil)
+        nativePanel = nil
         model?.stop()
         window?.orderOut(nil)
         window = nil
