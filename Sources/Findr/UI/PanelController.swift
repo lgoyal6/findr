@@ -18,6 +18,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var monitor: Any?
     private var cancellables = Set<AnyCancellable>()
     private let openSettings: () -> Void
+    private var uploadDialog: UploadDialog?
+    private var handingOffFile = false
 
     static let width: CGFloat = 780
     static let previewWidth: CGFloat = 440
@@ -81,13 +83,42 @@ final class PanelController: NSObject, NSWindowDelegate {
     var isVisible: Bool { panel.isVisible }
 
     func toggle() {
-        panel.isVisible ? hide() : show()
+        guard !model.choosingFile else { return }
+        panel.isVisible ? hide() : show(query: uploadDialog == nil ? nil : model.text)
+    }
+
+    func useUploadDialog(_ dialog: UploadDialog?, monitor: UploadDialogs) {
+        guard uploadDialog != dialog else { return }
+        let wasChoosing = uploadDialog != nil
+        uploadDialog = dialog
+        model.choosingForApplication = dialog?.application.localizedName
+        model.chooseFile = nil
+        guard let dialog else {
+            if wasChoosing { hide() }
+            return
+        }
+        model.chooseFile = { [weak self, weak monitor] url, completion in
+            guard let self, let monitor else { return }
+            self.handingOffFile = true
+            self.panel.orderOut(nil)
+            monitor.choose(url, in: dialog) { [weak self] result in
+                guard let self else { return }
+                self.handingOffFile = false
+                completion(result)
+                if case .failure = result, self.uploadDialog == dialog {
+                    NSApp.activate(ignoringOtherApps: true)
+                    self.panel.makeKeyAndOrderFront(nil)
+                }
+            }
+        }
+        show()
     }
 
     func show(query: String? = nil) {
         model.reset()
         if let query { model.text = query }
         place(width: Self.width)
+        if uploadDialog != nil { NSApp.activate(ignoringOtherApps: true) }
         panel.makeKeyAndOrderFront(nil)
     }
 
@@ -95,6 +126,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         model.cancelSearch()
         model.previewOpen = false
         panel.orderOut(nil)
+        if let uploadDialog,
+           NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+            NSApp.yieldActivation(to: uploadDialog.application)
+            uploadDialog.application.activate(options: [])
+        }
     }
 
     /// Draws the panel off-screen without taking keyboard focus, for screenshots
@@ -117,7 +153,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        hide()
+        if !handingOffFile { hide() }
     }
 
     /// Top third of the screen the mouse is on.

@@ -32,6 +32,9 @@ final class SearchModel: ObservableObject {
     @Published var focusRequest = 0
 
     var onDismiss: () -> Void = {}
+    var chooseFile: ((URL, @escaping (Result<Void, Error>) -> Void) -> Void)?
+    @Published var choosingForApplication: String?
+    @Published private(set) var choosingFile = false
 
     private var generation = 0
     private var debounce: DispatchWorkItem?
@@ -261,6 +264,7 @@ final class SearchModel: ObservableObject {
         listFocused = false
         historyIndex = nil
         focusRequest += 1
+        choosingFile = false
     }
 
     // MARK: Actions
@@ -270,6 +274,26 @@ final class SearchModel: ObservableObject {
 
     func open(_ item: ResultItem? = nil) {
         guard let item = item ?? selectedItem, flat.contains(where: { $0.id == item.id }) else { return }
+        if let chooseFile {
+            guard !choosingFile else { return }
+            choosingFile = true
+            let gen = generation
+            let actionQuery = text
+            chooseFile(URL(fileURLWithPath: item.candidate.path)) { [weak self] result in
+                guard let self else { return }
+                if case .success = result { self.recordPick(actionQuery, item.candidate.path) }
+                guard self.generation == gen else { return }
+                self.choosingFile = false
+                switch result {
+                case .success:
+                    self.actionError = nil
+                    self.onDismiss()
+                case .failure(let error):
+                    self.actionError = error.localizedDescription
+                }
+            }
+            return
+        }
         if let kind = runnableLabel(item.candidate), confirmedRunnable != item.id {
             confirmedRunnable = item.id
             let name = Runnable.visibleName(item.candidate.name)

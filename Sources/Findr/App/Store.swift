@@ -60,6 +60,11 @@ final class Store {
 
     // MARK: Settings
 
+    var useUploadDialogs: Bool {
+        get { defaults.object(forKey: "useUploadDialogs") == nil || defaults.bool(forKey: "useUploadDialogs") }
+        set { defaults.set(newValue, forKey: "useUploadDialogs") }
+    }
+
     /// Carbon key code and modifier mask. Defaults to Cmd-Shift-Space.
     var hotKey: (code: UInt32, modifiers: UInt32, label: String) {
         get {

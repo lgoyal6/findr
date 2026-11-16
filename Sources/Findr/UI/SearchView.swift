@@ -8,6 +8,13 @@ struct SearchView: View {
     var body: some View {
         VStack(spacing: 0) {
             searchBar
+            if let application = model.choosingForApplication {
+                Text("Choose a file for \(application)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18).padding(.bottom, 10)
+            }
             Divider().opacity(0.6)
             if let error = model.actionError {
                 HStack {
@@ -37,12 +44,13 @@ struct SearchView: View {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             TextField("Search files, e.g. invoice pdf last week", text: $model.text)
+                .disabled(model.choosingFile)
                 .textFieldStyle(.plain)
                 .font(.system(size: 22))
                 .focused($fieldFocused)
                 .accessibilityLabel("Search files")
                 .accessibilityHint("Type part of a name. Down arrow moves into the results.")
-            if model.searching {
+            if model.searching || model.choosingFile {
                 ProgressView().controlSize(.small)
             }
             if let label = model.query.filterLabel {
@@ -207,7 +215,7 @@ struct SearchView: View {
 
     private var footer: some View {
         HStack(spacing: 14) {
-            hint("↵", "Open")
+            hint("↵", model.choosingForApplication == nil ? "Open" : "Choose file")
             hint("⌘↵", "Show in Finder")
             hint("⌘Y", "Preview")
             hint("⌘C", "Copy file")
