@@ -16,6 +16,7 @@ final class SettingsModel: ObservableObject {
         }
     }
     @Published var launchError: String?
+    @Published var browserExtensionError: String?
     @Published var uploadAccessibility = AXIsProcessTrusted()
     @Published var useUploadDialogs = Store.shared.useUploadDialogs {
         didSet { Store.shared.useUploadDialogs = useUploadDialogs }
@@ -154,6 +155,17 @@ struct SettingsView: View {
                 Text("Folders to skip")
             }
             Section("General") {
+                HStack {
+                    Text("Browser uploads")
+                    Spacer()
+                    Button("Safari…", action: BrowserExtensionSetup.showSafariExtension)
+                    Button("Chrome…", action: BrowserExtensionSetup.showChromeExtension)
+                }
+                Text("Enable Leaf Uploads in your browser to choose files directly in Leaf. For Chrome, load the BrowserExtension folder as an unpacked extension at chrome://extensions.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let error = model.browserExtensionError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
                 Toggle("Search file dialogs in other apps", isOn: $model.useUploadDialogs)
                 if model.useUploadDialogs && !model.uploadAccessibility {
                     Button("Enable Accessibility…") { UploadDialogs.requestAccess() }

@@ -11,10 +11,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let settings = SettingsModel()
     private var updaterController: SPUStandardUpdaterController?
     private let uploadDialogs = UploadDialogs()
+    private let browserUploads = BrowserUploadController()
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if browserUploads.hasSession { browserUploads.show(); return false }
         panel?.show()
         return false
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.scheme == "leaf-upload" {
+            panel?.hide()
+            browserUploads.receive(url)
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -31,6 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             settings.hotKeyError = "\(Store.shared.hotKey.label) is taken by another app. Pick a new shortcut."
         }
         settings.applyAppearance()
+        do { try BrowserExtensionSetup.installChromeHost() }
+        catch { settings.browserExtensionError = error.localizedDescription }
         setUpStatusItem()
         requestFolderAccess()
 
@@ -38,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if !arguments.contains("--render") {
             uploadDialogs.onChange = { [weak self] dialog in
                 guard let self else { return }
+                guard !self.browserUploads.hasSession else { return }
                 self.panel.useUploadDialog(dialog, monitor: self.uploadDialogs)
             }
             uploadDialogs.onPermissionChange = { [weak self] allowed in
@@ -116,7 +128,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func togglePanel() {
-        panel.toggle()
+        if browserUploads.hasSession { browserUploads.toggle() }
+        else { panel.toggle() }
     }
 
     @objc func showSettings() {

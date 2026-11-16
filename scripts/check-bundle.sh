@@ -20,6 +20,13 @@ assert info['CFBundleDisplayName'] == 'Leaf'
 assert info['CFBundleName'] == 'Leaf'
 assert info['CFBundleExecutable'] == 'Leaf'
 assert info['CFBundleIdentifier'] == 'io.github.lgoyal6.findr', 'Keep identity for existing installs'
+assert info.get('NSAppleEventsUsageDescription'), 'Automation permission explanation missing'
+assert any('leaf-upload' in entry.get('CFBundleURLSchemes', []) for entry in info.get('CFBundleURLTypes', []))
+assert (app / 'Resources/LeafBrowserHost').is_file(), 'Browser native host missing'
+assert (app / 'Resources/BrowserExtension/manifest.json').is_file(), 'Chrome extension missing'
+extension = app / 'PlugIns/LeafSafariExtension.appex'
+assert (extension / 'Contents/MacOS/LeafSafariExtension').is_file(), 'Safari extension missing'
+assert (extension / 'Contents/Resources/manifest.json').is_file(), 'Safari web resources missing'
 assert (app / 'Resources/AppIcon.icns').is_file()
 assert info['CFBundleVersion'] == info['CFBundleShortVersionString']
 framework = app / 'Frameworks/Sparkle.framework'
