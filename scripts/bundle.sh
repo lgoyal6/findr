@@ -62,6 +62,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAppleEventsUsageDescription</key><string>Leaf uses System Events to choose files in apps whose upload dialogs require keyboard automation.</string>
 </dict>
 </plist>
 PLIST

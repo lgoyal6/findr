@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var settingsWindow: NSWindow?
     private let settings = SettingsModel()
     private var updaterController: SPUStandardUpdaterController?
+    private let uploadDialogs = UploadDialogs()
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         panel?.show()
@@ -24,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         installMenu()
         panel = PanelController(openSettings: { [weak self] in self?.showSettings() })
-        hotKey = HotKey { [weak self] in self?.panel.toggle() }
+        hotKey = HotKey { [weak self] in self?.togglePanel() }
         settings.registerHotKey = { [weak self] in self?.registerHotKey() ?? false }
         if !registerHotKey() {
             settings.hotKeyError = "\(Store.shared.hotKey.label) is taken by another app. Pick a new shortcut."
@@ -34,6 +35,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         requestFolderAccess()
 
         let arguments = CommandLine.arguments
+        if !arguments.contains("--render") {
+            uploadDialogs.onChange = { [weak self] dialog in
+                guard let self else { return }
+                self.panel.useUploadDialog(dialog, monitor: self.uploadDialogs)
+            }
+            uploadDialogs.onPermissionChange = { [weak self] allowed in
+                self?.settings.uploadAccessibility = allowed
+            }
+            uploadDialogs.start()
+            if Store.shared.useUploadDialogs, !UserDefaults.standard.bool(forKey: "requestedUploadAccessibility") {
+                UserDefaults.standard.set(true, forKey: "requestedUploadAccessibility")
+                UploadDialogs.requestAccess()
+            }
+        }
         if let index = arguments.firstIndex(of: "--render"), index + 1 < arguments.count {
             let down = arguments.firstIndex(of: "--down").flatMap { Int(arguments[$0 + 1]) } ?? 0
             panel.renderOffscreen(query: arguments[index + 1], down: down,
@@ -48,6 +63,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             UserDefaults.standard.set(true, forKey: "launchedBefore")
             panel.show()
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        uploadDialogs.stop()
     }
 
     /// Spotlight silently leaves out files in Desktop, Documents and Downloads until the

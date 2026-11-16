@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import ServiceManagement
 import SwiftUI
 
@@ -15,6 +16,10 @@ final class SettingsModel: ObservableObject {
         }
     }
     @Published var launchError: String?
+    @Published var uploadAccessibility = AXIsProcessTrusted()
+    @Published var useUploadDialogs = Store.shared.useUploadDialogs {
+        didSet { Store.shared.useUploadDialogs = useUploadDialogs }
+    }
 
     /// Re-registers the global shortcut; returns false if macOS refused it.
     var registerHotKey: () -> Bool = { true }
@@ -149,6 +154,12 @@ struct SettingsView: View {
                 Text("Folders to skip")
             }
             Section("General") {
+                Toggle("Search file dialogs in other apps", isOn: $model.useUploadDialogs)
+                if model.useUploadDialogs && !model.uploadAccessibility {
+                    Button("Enable Accessibility…") { UploadDialogs.requestAccess() }
+                    Text("Allow Leaf in System Settings → Privacy & Security → Accessibility to choose files in other apps.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Toggle("Launch at login", isOn: Binding(get: { model.launchAtLogin },
                                                         set: { model.launchAtLogin = $0 }))
                 if let error = model.launchError {
