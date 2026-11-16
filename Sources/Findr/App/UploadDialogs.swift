@@ -116,6 +116,11 @@ final class UploadDialogs {
         }
         guard let app = NSWorkspace.shared.frontmostApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        if ["com.apple.Safari", "com.google.Chrome"].contains(app.bundleIdentifier ?? "") {
+            observe(nil)
+            update(nil)
+            return
+        }
         observe(app)
         scanning = true
         queue.async { [weak self] in

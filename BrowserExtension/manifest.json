@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Leaf Uploads",
+  "version": "1.0.0",
+  "description": "Choose upload files with Leaf search and folder browsing.",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "file:///*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*",
+        "file:///*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*",
+        "file:///*"
+      ],
+      "js": [
+        "picker.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzmQvELkxh4aT3oS9UO27WuYjLvMsCMnW9fgc51ttD8PowQx6BO1OAlvEecnQY3ZQbHJmRf7ACBv4IWMNi0bGfiO9IcmNf2q99vMWHl0x2ZOMUaamZTbtN3vfP8kYla2DvEdkiSNKLK+HKuzs1Kbb228xrA4zX0+VWrqcMCzWMG++ZPujijihAJB8GZRX8vy9LYjbZ39TayThl3YyAjGWO8wnkAds9xFK9/xLtQY0NOD8CtA2SOdWYdxJ1pHd3Q/7JMuCkJ9apN6Ni8xITzS2mH/sByLLG61tm1ds/7hmbvnZQCwOnunNbeRAB+mbJfeoaH98KNfGD8rrvMQadWvjawIDAQAB"
+}

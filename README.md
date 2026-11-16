@@ -48,7 +48,7 @@ No syntax to learn. No `kind:pdf`, no `name:`, no Finder filter rows.
 
 | Key | Action |
 |---|---|
-| ↵ | Open |
+| ↵ | Open, or choose the file in an active file dialog |
 | ⌘↵ | Show in Finder |
 | ⌘Y, or Space once you've arrowed into the list | Preview (PDFs open at the matching page, word highlighted) |
 | ⌘C (in the list) | Copy the file |
@@ -58,6 +58,24 @@ No syntax to learn. No `kind:pdf`, no `name:`, no Finder filter rows.
 | Esc | Close preview, then close Leaf |
 
 You can also drag a result straight into Mail, Slack or a browser upload box.
+
+Enable **Leaf Uploads** in Safari or Chrome to open a Leaf file picker directly
+from supported website upload controls. Browse folders in the sidebar, switch
+between list and grid views, preview a file, or search with Leaf, then choose the
+files. Website file-type and multiple-selection requirements apply. **⌘⇧Space**
+hides and reopens the picker with the current search preserved.
+
+For Safari, use **Leaf Settings → Safari…** to enable the bundled extension and
+allow access to the sites where you want Leaf uploads. Development builds require
+Safari's **Allow unsigned extensions** setting. For Chrome, open **Leaf Settings
+→ Chrome…**, turn on Developer mode at `chrome://extensions`, and use **Load
+unpacked** to select the revealed `BrowserExtension` folder. Allow file-URL access
+only if you want to use local HTML pages. Directory uploads use the browser's
+native picker. If a browser connection fails, Leaf offers **Use macOS picker**.
+
+Other apps can use the Accessibility integration in Leaf Settings. Their native
+dialogs open first, then Leaf search appears. macOS may also ask for Automation
+access when an app needs the System Events fallback.
 
 **App**
 - Lives in the menu bar, no Dock icon
